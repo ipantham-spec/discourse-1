@@ -115,3 +115,7 @@ class Vips
   private_class_method :run
   private_constant :DEFAULT_TIMEOUT, :RLIMITS
 end
+
+require_relative "vips/ico"
+require_relative "vips/image_processor"
+require_relative "vips/jpeg_quality"
