@@ -42,7 +42,9 @@ From the [project overview](https://dev.discourse.org/t/rest-api-overhaul-projec
 
 ### Authentication
 
-Nothing changes here, we keep the existing API key credentials (`Api-Key`/`Api-Username`). Authorization doesn't change either and keeps using our guardians: a resource declares the scope a caller can see, attributes can be restricted, and writes go through the usual service framework.
+Nothing changes here, we keep the existing API key credentials (`Api-Key`/`Api-Username`). Authorization doesn't change either and keeps using our guardians: a resource declares which records a caller can see, attributes can be restricted, and writes go through the usual service framework.
+
+API key scopes keep working as they do today too. A new endpoint shows up in the key's scope list under its resource name, with one action per verb (`queries` → `read`, `create`, …), and a key can still be restricted to specific record ids. A key with no scopes keeps full access, as before.
 
 ### Versioning
 
@@ -112,7 +114,7 @@ Errors are JSON:API error documents. On listings, unknown filters, sorts, includ
 
 ### Documentation
 
-The reference documentation is generated from the same declarations that serve the API, so the two can't diverge, and it's versioned: selecting a date shows the API as that pin sees it. There's one document per owner (core, then one per plugin), each with its own changelog. Described in the [documentation update](https://dev.discourse.org/t/modernizing-how-we-write-apis-in-discourse-a-json-api-experiment/186394/19), and you can browse the generated docs for the prototype here:
+The reference documentation is generated from the same declarations that serve the API, so the two can't diverge, and it's versioned: selecting a date shows the API as that pin sees it. There's one document per owner (core, then one per plugin), each with its own changelog. It also documents the credentials and, per endpoint, the API key scope a caller needs. Described in the [documentation update](https://dev.discourse.org/t/modernizing-how-we-write-apis-in-discourse-a-json-api-experiment/186394/19), and you can browse the generated docs for the prototype here:
 
 <https://raw.githack.com/discourse/discourse/loic/json-api-experiments/plugins/discourse-data-explorer/openapi-docs.html>
 
@@ -214,6 +216,10 @@ end
 ```
 
 The namespace is declared once and becomes the relationship name and the prefix for query keys (`filter[run-stats.stale]`), so plugins can't collide with core or with each other. Their contributions are additive, they don't modify core's filters, sorts or default sort. The four rules are in the [plugins update](https://dev.discourse.org/t/modernizing-how-we-write-apis-in-discourse-a-json-api-experiment/186394/17).
+
+### API key scopes
+
+Scopes are derived, not hand-listed in a central file. Every routed endpoint contributes its actions to a scope named after its resource type (`index`/`show` → `read`, then `create`, `update`, `delete`), and the result plugs into the existing scope system, so API keys, the admin UI, and restricting a key to specific ids all keep working with no changes on core's side. The only thing an endpoint has to provide is a description for the admin UI, and a spec fails if it's missing.
 
 ### Safety net
 
