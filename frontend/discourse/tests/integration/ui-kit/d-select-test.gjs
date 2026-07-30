@@ -1,4 +1,5 @@
-import { render, select } from "@ember/test-helpers";
+import { tracked } from "@glimmer/tracking";
+import { render, select, settled } from "@ember/test-helpers";
 import { module, test } from "qunit";
 import { setupRenderingTest } from "discourse/tests/helpers/component-test";
 import DSelect, { NO_VALUE_OPTION } from "discourse/ui-kit/d-select";
@@ -51,6 +52,45 @@ module("Integration | ui-kit | DSelect", function (hooks) {
     assert.dselect().hasSelectedOption({
       value: "foo",
       label: "The real foo",
+    });
+  });
+
+  test("keeps the selection when options are rebuilt", async function (assert) {
+    class State {
+      @tracked
+      options = [
+        { value: "foo", label: "The real foo" },
+        { value: "bar", label: "The real bar" },
+      ];
+    }
+
+    const state = new State();
+
+    await render(
+      <template>
+        <DSelect @value="bar" as |s|>
+          {{#each state.options as |option|}}
+            <s.Option @value={{option.value}}>{{option.label}}</s.Option>
+          {{/each}}
+        </DSelect>
+      </template>
+    );
+
+    assert.dselect().hasSelectedOption({
+      value: "bar",
+      label: "The real bar",
+    });
+
+    state.options = [
+      { value: "baz", label: "The real baz" },
+      { value: "foo", label: "The real foo" },
+      { value: "bar", label: "The real bar" },
+    ];
+    await settled();
+
+    assert.dselect().hasSelectedOption({
+      value: "bar",
+      label: "The real bar",
     });
   });
 
