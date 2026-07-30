@@ -11,14 +11,15 @@ If you have suggestions/corrections, please post below, and I’ll handle integr
 
 ## TL;DR
 
-- A new API served under a global `/api/...` namespace (that's the proposal, see the open questions)
-- JSON:API formats for requests and responses, so one shape everywhere, with related data side-loaded on request
-- AMS serializers are replaced with a resource object: document shape and query surface (filters, sorts, includes, pagination) declared in one place
-- Versioned by date, and the version header is mandatory. Controllers only implement the latest version, and dated version changes translate older requests and responses, a bit like AR migrations but for the wire, never for stored data
-- Requests, responses and version changes are self-documenting: the reference docs and the changelog are generated from them
+- A new API under `/api/...`
+- JSON:API formats for requests and responses
+- AMS serializers are replaced with a resource object
+- Versioned by a mandatory date-based `Api-Version` header
+- Controllers only implement the latest version. VersionChange system translates older requests and responses, similar to database migrations
+- Docs & changelog are auto-generated from the code
 - Cursor pagination only: no page numbers, no offsets, no total counts
-- Plugins can add namespaced relations and filters to core resources, but not modify their attributes
-- The current API stays in place, the new one is opt-in per request
+- Plugins add relations and filters to core resources, but never modify their attributes
+- The current API stays in place (for now)
 
 ## Background
 
