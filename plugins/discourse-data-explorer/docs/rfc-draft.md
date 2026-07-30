@@ -1,14 +1,30 @@
 # RFC: A versioned JSON:API for Discourse
 
-This is the RFC phase of the [REST API overhaul project](https://dev.discourse.org/t/rest-api-overhaul-project-overview/187625): what the new API looks like, how it's used and how it's written. Everything here has been prototyped in the Data Explorer plugin ([PR #40832](https://github.com/discourse/discourse/pull/40832)), the exploration itself is logged in [Modernizing how we write APIs in Discourse](https://dev.discourse.org/t/modernizing-how-we-write-apis-in-discourse-a-json-api-experiment/186394), and the full design with the reasoning behind each decision is in reference docs in the PR. I link them from the relevant sections below.
+This is the RFC for our [REST API overhaul](https://dev.discourse.org/t/rest-api-overhaul-project-overview/187625).
+
+Prior work:
+
+- Prototype in the data-explorer plugin: [PR #40832](https://github.com/discourse/discourse/pull/40832), including full design & reasoning in markdown files
+- Exploration logs: [Modernizing how we write APIs in Discourse](https://dev.discourse.org/t/modernizing-how-we-write-apis-in-discourse-a-json-api-experiment/186394)
 
 If you have suggestions/corrections, please post below, and I’ll handle integrating any changes.
+
+## TL;DR
+
+- A new API served under a global `/api/...` namespace (that's the proposal, see the open questions)
+- JSON:API formats for requests and responses, so one shape everywhere, with related data side-loaded on request
+- AMS serializers are replaced with a resource object: document shape and query surface (filters, sorts, includes, pagination) declared in one place
+- Versioned by date, and the version header is mandatory. Controllers only implement the latest version, and dated version changes translate older requests and responses, a bit like AR migrations but for the wire, never for stored data
+- Requests, responses and version changes are self-documenting: the reference docs and the changelog are generated from them
+- Cursor pagination only: no page numbers, no offsets, no total counts
+- Plugins can add namespaced relations and filters to core resources, but not modify their attributes
+- The current API stays in place, the new one is opt-in per request
 
 ## Background
 
 Our APIs are hand-rolled: AMS serializers, ad-hoc pagination, and a different response shape per endpoint, with related data side-loaded differently everywhere (see [this post](https://dev.discourse.org/t/modernizing-how-we-write-apis-in-discourse-a-json-api-experiment/186394/1)). Avoiding breaking changes is a best effort, and we fail regularly. And the documentation is written by hand, separately from the code, so it doesn’t always stay up to date (see [documentation update](https://dev.discourse.org/t/modernizing-how-we-write-apis-in-discourse-a-json-api-experiment/186394/19)).
 
-So instead of defining our own conventions, we're adopting JSON:API. It's a frozen spec, and it already standardizes what we do (more or less) by hand today: compound documents (`included` plus linkage), `include`, sparse fieldsets, `filter`, `sort` and `page`. It's also what WarpDrive is normalized around. And as its documents are type-tagged, with standard error pointers and reserved parameter families, the versioning machinery below stays relatively small.
+So instead of defining our own conventions, we're adopting [JSON:API](https://jsonapi.org/). It's a frozen spec, and it already standardizes what we do (more or less) by hand today: compound documents^[one response carrying the records asked for plus the related ones, in a single `included` array], `include`^[the parameter asking for those related records: `?include=user,groups`], sparse fieldsets^[`?fields[queries]=name,ran_at`, so a client can ask for only the attributes it needs], `filter`, `sort` and `page`. It's also what WarpDrive is designed around. And as its documents are type-tagged, with standard error pointers and reserved parameter families^[every resource carries a `type`; validation errors point at the attribute at fault with a JSON Pointer (`/data/attributes/name`); and the spec reserves the `include`, `fields`, `filter`, `sort` and `page` parameter names. So the versioning machinery can find and rewrite all of those generically, instead of needing per-endpoint wiring], the versioning machinery below stays relatively small.
 
 ## Goals
 
@@ -87,7 +103,7 @@ Writes take a JSON:API document too (`data.type` plus `attributes`, relationship
 
 ### Pagination
 
-Collections use the JSON:API [cursor pagination profile](https://jsonapi.org/profiles/ethanresnick/cursor-pagination): `page[size]`, `page[after]`, `page[before]`, and `links.prev` / `links.next` to follow. There's no offset pagination, as `LIMIT...OFFSET` gets slower when the offset grows. The trade-off for integrators: no page numbers and no jumping to page N, and a total count is requested explicitly (`stats[total]=count`) instead of coming with every page. Explained in the [versioning update](https://dev.discourse.org/t/modernizing-how-we-write-apis-in-discourse-a-json-api-experiment/186394/13).
+Collections use the JSON:API [cursor pagination profile](https://jsonapi.org/profiles/ethanresnick/cursor-pagination): `page[size]`, `page[after]`, `page[before]`, and `links.prev` / `links.next` to follow. There's no offset pagination, as `LIMIT...OFFSET` gets slower when the offset grows. The trade-off for integrators: no page numbers, no jumping to page N, and no total count either (counting a filtered set is exactly the kind of query that gets expensive as the data grows). Explained in the [versioning update](https://dev.discourse.org/t/modernizing-how-we-write-apis-in-discourse-a-json-api-experiment/186394/13).
 
 ### Errors
 
@@ -97,13 +113,13 @@ Errors are JSON:API error documents. On listings, unknown filters, sorts, includ
 
 The reference documentation is generated from the same declarations that serve the API, so the two can't diverge, and it's versioned: selecting a date shows the API as that pin sees it. There's one document per owner (core, then one per plugin), each with its own changelog. Described in the [documentation update](https://dev.discourse.org/t/modernizing-how-we-write-apis-in-discourse-a-json-api-experiment/186394/19), and you can browse the generated docs for the prototype here:
 
-https://raw.githack.com/discourse/discourse/loic/json-api-experiments/plugins/discourse-data-explorer/openapi-docs.html
+<https://raw.githack.com/discourse/discourse/loic/json-api-experiments/plugins/discourse-data-explorer/openapi-docs.html>
 
 ## For developers (writing endpoints)
 
 ### Resource classes
 
-A resource class declares the document shape and the query surface in one place, including the scope a caller may see. Attribute types are required: the documentation is generated from them, and it's the same type vocabulary service contracts already use.
+A resource class declares the document shape and the query surface in one place, including the ActiveRecord scope a caller may see. Attribute types are required: the documentation is generated from them, and it's the same type vocabulary service contracts already use.
 
 ```ruby
 class QueryResource < ApplicationResource
