@@ -6,7 +6,7 @@ RSpec.describe OptimizedImage do
 
   describe ".crop" do
     it "should produce cropped images (requires ImageMagick 7)" do
-      tmp_path = "/tmp/cropped.png"
+      tmp_path = Dir::Tmpname.create(%w[cropped .png]) { nil }
       desired_width = 5
       desired_height = 5
 
@@ -31,7 +31,7 @@ RSpec.describe OptimizedImage do
     end
 
     it "should correctly crop images vertically" do
-      tmp_path = "/tmp/cropped.png"
+      tmp_path = Dir::Tmpname.create(%w[cropped .png]) { nil }
       desired_width = 100
       desired_height = 66
 
@@ -53,7 +53,7 @@ RSpec.describe OptimizedImage do
     end
 
     it "should correctly crop images horizontally" do
-      tmp_path = "/tmp/cropped.png"
+      tmp_path = Dir::Tmpname.create(%w[cropped .png]) { nil }
       desired_width = 244
       desired_height = 500
 
@@ -164,7 +164,7 @@ RSpec.describe OptimizedImage do
 
     describe ".downsize" do
       it "should downsize logo (requires ImageMagick 7)" do
-        tmp_path = "/tmp/downsized.png"
+        tmp_path = Dir::Tmpname.create(%w[downsized .png]) { nil }
 
         begin
           OptimizedImage.downsize(

@@ -26,7 +26,7 @@ class Vips
     run(*command, read:, write:, timeout:, allow_untrusted:, failure_message:)
   end
 
-  def self.header(path, field:, read: [], timeout: nil, failure_message: "")
+  def self.header(path, field:, read: [], timeout: nil, allow_untrusted: false, failure_message: "")
     run(
       "vipsheader",
       "--field",
@@ -35,7 +35,7 @@ class Vips
       read: [path, *read],
       write: [],
       timeout:,
-      allow_untrusted: false,
+      allow_untrusted:,
       failure_message:,
     )
   end
