@@ -1,0 +1,9 @@
+en:
+  js:
+    login:
+      ea_identity:
+        name: "EA"
+    admin:
+      site_settings:
+        categories:
+          discourse_ea_identity: "EA Login"

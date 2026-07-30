@@ -1,0 +1,197 @@
+discourse_ea_identity:
+  # =========================================================================
+  # These are the only settings shown on the EA Login tab
+  # (Admin → Plugins → EA Login). Everything below "Advanced" is hidden.
+  # =========================================================================
+
+  # --- Core login / OAuth2 endpoints ---
+  ea_identity_enabled:
+    default: false
+    client: true
+  ea_identity_button_title:
+    default: "Sign in with EA"
+    client: true
+  ea_identity_client_id:
+    default: ""
+  ea_identity_authorize_url:
+    default: ""
+  ea_identity_token_url:
+    default: ""
+  ea_identity_user_json_url:
+    default: ""
+
+  # --- Token endpoint (Call 2) authentication method ---
+  # Choose how Discourse authenticates itself when exchanging the code for a
+  # token: with a shared client secret, or with a client certificate (mutual
+  # TLS client authentication, RFC 8705). This is independent of the mutual TLS
+  # used for the identity endpoint below.
+  ea_identity_token_auth_method:
+    default: "client_secret"
+    type: enum
+    choices:
+      - client_secret
+      - certificate
+  ea_identity_client_secret:
+    default: ""
+    secret: true
+  ea_identity_auth_client_certificate:
+    default: ""
+    textarea: true
+    secret: true
+  ea_identity_auth_client_key:
+    default: ""
+    textarea: true
+    secret: true
+  ea_identity_auth_client_key_passphrase:
+    default: ""
+    secret: true
+
+  # --- Identity endpoint (Call 3) mutual TLS ---
+  ea_identity_client_certificate:
+    default: ""
+    textarea: true
+    secret: true
+  ea_identity_client_key:
+    default: ""
+    textarea: true
+    secret: true
+  ea_identity_client_key_passphrase:
+    default: ""
+    secret: true
+
+  # --- Identity endpoint (Call 3) service authorization ---
+  # The identity endpoint authenticates BOTH the end user (via the X-ACCESS-TOKEN
+  # header, carrying the SSO access token) AND the calling service (via a standard
+  # Authorization: Bearer header). The service token is a separate OAuth2
+  # client_credentials token minted from an independent identity provider (an EA
+  # internal Keycloak realm). Configure that provider's token endpoint and the
+  # service client credentials here. Leave the token URL blank to fall back to
+  # reusing the user's SSO access token for the Authorization header.
+  ea_identity_service_token_url:
+    default: ""
+  ea_identity_service_client_id:
+    default: ""
+  ea_identity_service_client_secret:
+    default: ""
+    secret: true
+  ea_identity_service_scope:
+    default: ""
+
+  # =========================================================================
+  # Advanced / EA-fixed defaults — hidden from the tab. They already match the
+  # EA identity schema and can be changed from the rails console if ever needed.
+  # =========================================================================
+  ea_identity_fetch_user_details:
+    default: true
+    hidden: true
+  ea_identity_token_url_method:
+    default: "POST"
+    type: enum
+    choices:
+      - GET
+      - POST
+    hidden: true
+  ea_identity_user_json_url_method:
+    default: "GET"
+    type: enum
+    choices:
+      - GET
+      - POST
+    hidden: true
+  ea_identity_user_json_auth_header:
+    default: "X-ACCESS-TOKEN"
+    hidden: true
+  ea_identity_user_json_auth_header_scheme:
+    default: ""
+    hidden: true
+  ea_identity_send_bearer_authorization:
+    default: true
+    hidden: true
+  ea_identity_fail_open_on_policy_errors:
+    default: false
+    hidden: true
+  ea_identity_json_user_id_path:
+    default: "response.eaId"
+    hidden: true
+  ea_identity_json_username_path:
+    default: "response.eaId"
+    hidden: true
+  ea_identity_json_name_path:
+    default: ""
+    hidden: true
+  ea_identity_json_email_path:
+    default: "response.email"
+    hidden: true
+  ea_identity_json_email_verified_path:
+    default: ""
+    hidden: true
+  ea_identity_json_avatar_path:
+    default: "response.avatar"
+    hidden: true
+  ea_identity_email_verified:
+    default: true
+    hidden: true
+  ea_identity_overrides_email:
+    default: false
+    hidden: true
+  ea_identity_json_groups_path:
+    default: ""
+    hidden: true
+  ea_identity_groups_property:
+    default: "name"
+    type: enum
+    choices:
+      - name
+      - id
+    hidden: true
+  ea_identity_scope:
+    default: ""
+    hidden: true
+  ea_identity_authorize_options:
+    default: "scope"
+    type: list
+    hidden: true
+  ea_identity_authorize_params:
+    default: ""
+    hidden: true
+  ea_identity_use_pkce:
+    default: false
+    hidden: true
+  ea_identity_send_auth_header:
+    default: true
+    hidden: true
+  ea_identity_send_auth_body:
+    default: true
+    hidden: true
+  ea_identity_ca_certificate:
+    default: ""
+    textarea: true
+    secret: true
+    hidden: true
+  ea_identity_verify_ssl:
+    default: true
+    hidden: true
+  ea_identity_use_id_token:
+    default: false
+    hidden: true
+  ea_identity_id_token_user_id_claim:
+    default: "eaId"
+    hidden: true
+  ea_identity_id_token_email_claim:
+    default: "email"
+    hidden: true
+  ea_identity_id_token_name_claim:
+    default: ""
+    hidden: true
+  ea_identity_id_token_username_claim:
+    default: ""
+    hidden: true
+  ea_identity_allow_association_change:
+    default: false
+    hidden: true
+  ea_identity_callback_user_id_path:
+    default: ""
+    hidden: true
+  ea_identity_debug_auth:
+    default: false
+    hidden: true
