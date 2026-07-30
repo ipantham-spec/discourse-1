@@ -952,6 +952,8 @@ RSpec.describe Upload do
     end
 
     it "correctly identifies and stores an image's dominant color" do
+      ImageMagick.expects(:magick).never
+
       expect(white_image.dominant_color).to eq(nil)
       expect(white_image.dominant_color(calculate_if_missing: true)).to eq("FFFFFF")
       expect(white_image.dominant_color).to eq("FFFFFF")
@@ -961,12 +963,8 @@ RSpec.describe Upload do
       expect(red_image.dominant_color).to eq("FF0000")
 
       expect(high_color_image.dominant_color).to eq(nil)
-      # original is: #000A00F00
-      # downsamples to: #009FEF
-      # A00 is closer to 9F than A0
-      # EF is closer to F00 than F0
-      expect(high_color_image.dominant_color(calculate_if_missing: true)).to eq("009FEF")
-      expect(high_color_image.dominant_color).to eq("009FEF")
+      expect(high_color_image.dominant_color(calculate_if_missing: true)).to eq("00A0F0")
+      expect(high_color_image.dominant_color).to eq("00A0F0")
     end
 
     it "can be backfilled" do
@@ -1010,13 +1008,17 @@ RSpec.describe Upload do
     end
 
     it "correctly handles invalid image files" do
+      ImageMagick.expects(:magick).never
+
       expect(invalid_image.dominant_color).to eq(nil)
       expect(invalid_image.dominant_color(calculate_if_missing: true)).to eq("")
       expect(invalid_image.dominant_color).to eq("")
     end
 
-    it "correctly handles unparsable ImageMagick output" do
-      ImageMagick.stubs(:magick).returns("someinvalidoutput")
+    it "raises when the dominant color output cannot be parsed" do
+      Vips::DominantColor.stubs(:extract).raises(
+        "Calculated dominant color but unable to parse output",
+      )
 
       expect(invalid_image.dominant_color).to eq(nil)
 

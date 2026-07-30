@@ -98,6 +98,7 @@ class ProblemCheck
     ProblemCheck::TwitterConfig,
     ProblemCheck::TwitterLogin,
     ProblemCheck::UnreachableThemes,
+    ProblemCheck::Vips,
     ProblemCheck::WatchedWords,
     ProblemCheck::UpcomingChangeStableOptedOut,
   ].freeze

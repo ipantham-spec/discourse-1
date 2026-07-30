@@ -395,31 +395,7 @@ class Upload < ActiveRecord::Base
 
       color ||=
         begin
-          data =
-            ImageMagick.magick(
-              local_path,
-              "-depth",
-              "8",
-              "-resize",
-              "1x1",
-              "-define",
-              "histogram:unique-colors=true",
-              "-format",
-              "%c",
-              "histogram:info:",
-              read: [local_path],
-              nice: 10,
-              timeout: DOMINANT_COLOR_COMMAND_TIMEOUT_SECONDS,
-            )
-
-          # Output format:
-          # 1: (110.873,116.226,93.8821) #6F745E srgb(43.4798%,45.5789%,36.8165%)
-
-          color = data[/#([0-9A-F]{6})/, 1]
-
-          raise "Calculated dominant color but unable to parse output:\n#{data}" if color.nil?
-
-          color
+          Vips::DominantColor.extract(local_path)
         rescue Discourse::Utils::CommandError
           # Timeout or unable to parse image
           # This can happen due to bad user input - ignore and save

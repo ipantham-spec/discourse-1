@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "erb"
+
 class LetterAvatar
   class Identity
     attr_accessor :color, :letter
@@ -16,7 +18,7 @@ class LetterAvatar
   end
 
   # BUMP UP if avatar algorithm changes
-  VERSION = 5
+  VERSION = 6
 
   # CHANGE these values to support more pixel ratios
   FULLSIZE = 120 * 3
@@ -24,7 +26,7 @@ class LetterAvatar
 
   class << self
     def version
-      "#{VERSION}_#{image_magick_version}"
+      "#{VERSION}_#{vips_version}"
     end
 
     def cache_path
@@ -46,10 +48,7 @@ class LetterAvatar
         fullsize = fullsize_path(identity)
         generate_fullsize(identity) if !cache || !File.exist?(fullsize)
 
-        # Optimizing here is dubious, it can save up to 2x for large images (eg 359px)
-        # BUT... we are talking 2400 bytes down to 1200 bytes, both fit in one packet
-        # The cost of this is huge, its a 40% perf hit
-        OptimizedImage.resize(fullsize, filename, size, size)
+        resize(fullsize, filename, size)
 
         filename
       end
@@ -67,56 +66,48 @@ class LetterAvatar
 
     def generate_fullsize(identity)
       color = identity.color
-      letter = identity.letter
-
       filename = fullsize_path(identity)
 
-      # Use NimbusSans-Regular, except for macOS where it is unavailable, use Helvetica there
-      font = RbConfig::CONFIG["host_os"].match?(/darwin/i) ? "Helvetica" : "NimbusSans-Regular"
-      # and adjust vertical offset accordingly
-      vertical_offset = font == "Helvetica" ? 26 : 34
+      Tempfile.create(%w[letter-avatar .svg]) do |svg|
+        svg.write(svg_for(identity))
+        svg.flush
 
-      instructions = %W[
-        -size
-        #{FULLSIZE}x#{FULLSIZE}
-        xc:#{to_rgb(color)}
-        -pointsize
-        #{POINTSIZE}
-        -fill
-        #FFFFFFCC
-        -font
-        #{font}
-        -gravity
-        Center
-        -annotate
-        -0+#{vertical_offset}
-        #{letter}
-        -depth
-        8
-        #{filename}
-      ]
-
-      ImageMagick.magick(*instructions, write: [File.dirname(filename)])
-
-      ## do not optimize image, it will end up larger than original
+        Vips.call(
+          "flatten",
+          svg.path,
+          filename,
+          "--background",
+          color.join(" "),
+          read: [svg.path],
+          write: [File.dirname(filename)],
+          allow_untrusted: true,
+        )
+      end
       filename
     end
 
-    def to_rgb(color)
-      r, g, b = color
-      "rgb(#{r},#{g},#{b})"
-    end
-
-    def image_magick_version
-      @image_magick_version ||=
+    def vips_version
+      @vips_version ||=
         begin
           Thread.new do
             sleep 2
             cleanup_old
           end
-          Digest::MD5.hexdigest(
-            ImageMagick.magick("--version") << ImageMagick.magick("-list", "font"),
-          )
+
+          Dir.mktmpdir("letter-avatar-version") do |directory|
+            font_sample = File.join(directory, "font.v")
+            Vips.call(
+              "text",
+              font_sample,
+              "AaΩЖब한",
+              "--font",
+              "#{font_family} 12",
+              "--dpi",
+              "72",
+              write: [directory],
+            )
+            Digest::MD5.hexdigest(Vips.call("--version") << File.binread(font_sample))
+          end
         end
     end
 
@@ -130,6 +121,52 @@ class LetterAvatar
         end
     rescue Errno::ENOENT
       # no worries, folder doesn't exists
+    end
+
+    private
+
+    def resize(from, to, size)
+      profile = Rails.root.join("vendor/data/RT_sRGB.icm").to_s
+      output = "#{to}[palette,Q=100,compression=6,strip]"
+
+      Vips.call(
+        "thumbnail",
+        from,
+        output,
+        size.to_s,
+        "--height",
+        size.to_s,
+        "--size",
+        "both",
+        "--crop",
+        "centre",
+        "--output-profile",
+        profile,
+        read: [from, profile],
+        write: [File.dirname(to)],
+        nice: 10,
+      )
+    end
+
+    def svg_for(identity)
+      color = identity.color.join(",")
+      letter = ERB::Util.html_escape(identity.letter)
+      baseline = 245 + vertical_offset
+
+      <<~SVG
+        <svg xmlns="http://www.w3.org/2000/svg" width="#{FULLSIZE}" height="#{FULLSIZE}" viewBox="0 0 #{FULLSIZE} #{FULLSIZE}">
+          <rect width="#{FULLSIZE}" height="#{FULLSIZE}" fill="rgb(#{color})"/>
+          <text x="#{FULLSIZE / 2}" y="#{baseline}" fill="white" fill-opacity="0.8" font-family="#{font_family}" font-size="#{POINTSIZE}" text-anchor="middle" dominant-baseline="central">#{letter}</text>
+        </svg>
+      SVG
+    end
+
+    def font_family
+      RbConfig::CONFIG["host_os"].match?(/darwin/i) ? "Helvetica" : "Nimbus Sans"
+    end
+
+    def vertical_offset
+      font_family == "Helvetica" ? 26 : 34
     end
   end
 
