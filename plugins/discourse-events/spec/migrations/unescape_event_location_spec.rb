@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require Rails.root.join(
-          "plugins/discourse-calendar/db/post_migrate/20260723094850_unescape_event_location.rb",
+          "plugins/discourse-events/db/post_migrate/20260723094850_unescape_event_location.rb",
         )
 
 RSpec.describe UnescapeEventLocation do
