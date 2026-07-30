@@ -1,7 +1,7 @@
 import Component from "@glimmer/component";
 import { trustHTML } from "@ember/template";
 import dIcon from "discourse/ui-kit/helpers/d-icon";
-import openLinksInNewTab from "discourse/plugins/discourse-calendar/discourse/modifiers/open-links-in-new-tab";
+import openLinksInNewTab from "discourse/plugins/discourse-events/discourse/modifiers/open-links-in-new-tab";
 
 const BARE_URL_REGEX = /^https?:\/\/\S+$/;
 

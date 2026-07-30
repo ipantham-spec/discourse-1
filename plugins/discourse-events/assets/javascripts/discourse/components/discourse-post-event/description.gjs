@@ -6,7 +6,7 @@ import { modifier } from "ember-modifier";
 import { or } from "discourse/truth-helpers";
 import dIcon from "discourse/ui-kit/helpers/d-icon";
 import { i18n } from "discourse-i18n";
-import openLinksInNewTab from "discourse/plugins/discourse-calendar/discourse/modifiers/open-links-in-new-tab";
+import openLinksInNewTab from "discourse/plugins/discourse-events/discourse/modifiers/open-links-in-new-tab";
 
 export default class DiscoursePostEventDescription extends Component {
   @tracked expanded = false;
