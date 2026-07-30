@@ -27,18 +27,29 @@ class Vips
   end
 
   def self.header(path, field:, read: [], timeout: nil, allow_untrusted: false, failure_message: "")
+    headers(path, fields: [field], read:, timeout:, allow_untrusted:, failure_message:).first
+  end
+
+  def self.headers(
+    path,
+    fields:,
+    read: [],
+    timeout: nil,
+    allow_untrusted: false,
+    failure_message: ""
+  )
     run(
       "vipsheader",
-      "--field",
-      field,
+      *fields.flat_map { |field| ["--field", field] },
       path,
       read: [path, *read],
       write: [],
       timeout:,
       allow_untrusted:,
       failure_message:,
-    )
+    ).lines(chomp: true)
   end
+  private_class_method :headers
 
   def self.dominant_color(path)
     Dir.mktmpdir("dominant-color") do |directory|
