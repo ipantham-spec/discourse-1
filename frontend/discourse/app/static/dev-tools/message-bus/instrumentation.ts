@@ -18,6 +18,86 @@ import "message-bus-client";
  * @module discourse/static/dev-tools/message-bus/instrumentation
  */
 
+/**
+ * A subscriber callback.
+ *
+ * MessageBus calls one with the message data plus the global and message ids,
+ * but a subscriber is free to declare fewer parameters, and the wrappers below
+ * relay whatever they were called with and return whatever came back.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type MessageBusSubscriber = (...args: any[]) => unknown;
+
+/** A subscription as MessageBus records it in its public `callbacks` array. */
+interface MessageBusSubscription {
+  channel: string;
+  last_id: number;
+  func: MessageBusSubscriber;
+}
+
+/** The request adapter MessageBus calls to run its long poll. */
+type MessageBusAjax = (options: MessageBusAjaxOptions) => unknown;
+
+/** The parts of a long poll request this module reads. */
+interface MessageBusAjaxOptions {
+  messageBus?: { chunked?: boolean };
+  xhr?: () => XMLHttpRequest;
+}
+
+/** The parts of the MessageBus client this module stands in front of. */
+interface MessageBusClient {
+  callbacks: MessageBusSubscription[];
+  subscribe: (
+    channel: string,
+    func: MessageBusSubscriber,
+    lastId?: number
+  ) => MessageBusSubscriber;
+  unsubscribe: (channel: string, func?: MessageBusSubscriber) => boolean;
+  ajax: MessageBusAjax;
+  longPoll?: { abort: () => void } | null;
+}
+
+// TODO(devxp-typescript-pending): `message-bus-client` ships no type
+// declarations, so the global it installs is described here as the subset this
+// module touches. Drop this once the package, or a core wrapper around it,
+// provides its own types.
+type MessageBusWindow = Window & { MessageBus?: MessageBusClient };
+
+/** A message as it arrives in a response frame. */
+interface MessageBusFrame {
+  channel: string;
+  message_id: number;
+  global_id: number;
+  data: unknown;
+}
+
+/** A message this module has observed arriving. */
+export interface ObservedMessage {
+  channel: string;
+  messageId: number;
+  globalId: number;
+  data: unknown;
+  receivedAt: number;
+}
+
+/** What is known about one subscription, accumulated as its callback runs. */
+interface SubscriptionMeta {
+  original: MessageBusSubscriber;
+  channel: string;
+  source: string | null;
+  calls: number;
+  errors: number;
+  lastError: string | null;
+  slowestMs: number;
+}
+
+/** The MessageBus methods replaced while installed, kept to restore them. */
+interface ReplacedMethods {
+  subscribe: MessageBusClient["subscribe"];
+  unsubscribe: MessageBusClient["unsubscribe"];
+  ajax: MessageBusAjax;
+}
+
 const MAX_MESSAGES = 200;
 
 /**
@@ -27,21 +107,21 @@ const MAX_MESSAGES = 200;
  * channels — `topic-tracking-state` alone does it four times — so a wrapper
  * cannot be looked up from its original. Only this direction is well defined.
  */
-const metaByWrapper = new WeakMap();
+const metaByWrapper = new WeakMap<MessageBusSubscriber, SubscriptionMeta>();
 
 const state = trackedObject({
   installed: false,
-  messages: trackedArray([]),
+  messages: trackedArray<ObservedMessage>([]),
   polls: 0,
 });
 
-let originals = null;
-let underlyingAjax = null;
+let originals: ReplacedMethods | null = null;
+let underlyingAjax: MessageBusAjax | null = null;
 
 /**
  * Observed state, for the inspector to render.
  *
- * @returns {Object} The tracked state object.
+ * @returns The tracked state object.
  */
 export function messageBusState() {
   return state;
@@ -53,11 +133,11 @@ export function messageBusState() {
  * Read straight from the live `MessageBus.callbacks` array, so it reflects
  * subscriptions made before dev tools loaded as well as after.
  *
- * @returns {Array<Object>} One entry per subscription.
+ * @returns One entry per subscription.
  */
 export function subscriptions() {
-  const callbacks = window.MessageBus?.callbacks ?? [];
-  const perChannel = new Map();
+  const callbacks = (window as MessageBusWindow).MessageBus?.callbacks ?? [];
+  const perChannel = new Map<string, number>();
 
   for (const callback of callbacks) {
     perChannel.set(
@@ -66,7 +146,7 @@ export function subscriptions() {
     );
   }
 
-  const seenPerChannel = new Map();
+  const seenPerChannel = new Map<string, number>();
 
   return callbacks.map((callback) => {
     const meta = metaByWrapper.get(callback.func);
@@ -96,7 +176,7 @@ export function subscriptions() {
  * Starts observing MessageBus. Safe to call more than once.
  */
 export function install() {
-  const bus = window.MessageBus;
+  const bus = (window as MessageBusWindow).MessageBus;
 
   if (state.installed || !bus) {
     return;
@@ -122,7 +202,7 @@ export function install() {
     configurable: true,
     enumerable: true,
     get: () => instrumentedAjax,
-    set: (implementation) => {
+    set: (implementation: MessageBusAjax) => {
       underlyingAjax = implementation;
     },
   });
@@ -141,7 +221,7 @@ export function install() {
  * Stops observing MessageBus and restores what it replaced.
  */
 export function uninstall() {
-  const bus = window.MessageBus;
+  const bus = (window as MessageBusWindow).MessageBus;
 
   if (!state.installed || !bus) {
     return;
@@ -176,13 +256,17 @@ export function uninstall() {
 /**
  * Wraps a subscriber so its calls can be counted and timed.
  *
- * @param {Function} original - The callback the caller passed to `subscribe`.
- * @param {string} channel - The channel it was subscribed to.
- * @param {string|null} source - Where it was subscribed from, if known.
- * @returns {Function} The wrapper to register in its place.
+ * @param original - The callback the caller passed to `subscribe`.
+ * @param channel - The channel it was subscribed to.
+ * @param source - Where it was subscribed from, if known.
+ * @returns The wrapper to register in its place.
  */
-function wrapCallback(original, channel, source) {
-  const wrapper = function () {
+function wrapCallback(
+  original: MessageBusSubscriber,
+  channel: string,
+  source: string | null
+) {
+  const wrapper = function (this: unknown) {
     const meta = metaByWrapper.get(wrapper);
     const startedAt = performance.now();
 
@@ -192,6 +276,7 @@ function wrapCallback(original, channel, source) {
       // The return value matters: `publishToMessageBus` in the test helpers
       // awaits what subscribers return, so swallowing it would silently stop
       // tests waiting for asynchronous subscribers.
+      // eslint-disable-next-line prefer-rest-params
       return original.apply(this, arguments);
     } catch (error) {
       meta.errors++;
@@ -218,7 +303,12 @@ function wrapCallback(original, channel, source) {
   return wrapper;
 }
 
-function instrumentedSubscribe(channel, func, lastId) {
+function instrumentedSubscribe(
+  this: unknown,
+  channel: string,
+  func: MessageBusSubscriber,
+  lastId?: number
+) {
   const wrapper = wrapCallback(func, channel, captureSource());
 
   originals.subscribe.call(this, channel, wrapper, lastId);
@@ -247,8 +337,8 @@ function instrumentedSubscribe(channel, func, lastId) {
  * in reverse, removing every match rather than the first, and aborting the
  * in-flight long poll if anything was removed.
  */
-function instrumentedUnsubscribe(channel, func) {
-  const bus = window.MessageBus;
+function instrumentedUnsubscribe(channel: string, func?: MessageBusSubscriber) {
+  const bus = (window as MessageBusWindow).MessageBus;
   let glob = false;
 
   if (channel.indexOf("*", channel.length - 1) !== -1) {
@@ -288,7 +378,7 @@ function instrumentedUnsubscribe(channel, func) {
   return removed;
 }
 
-function instrumentedAjax(options) {
+function instrumentedAjax(this: unknown, options: MessageBusAjaxOptions) {
   if (typeof underlyingAjax !== "function") {
     // Preserve the error MessageBus raises when no adapter is present. The
     // accessor always returns a function, so its own guard can no longer fire.
@@ -311,10 +401,12 @@ function instrumentedAjax(options) {
  * `xhr.onprogress`. Reading only `success` would therefore observe nothing
  * locally.
  *
- * @param {Object} options - The options MessageBus passed to `ajax`.
- * @returns {Object} The options, with a decorated `xhr` factory.
+ * @param options - The options MessageBus passed to `ajax`.
+ * @returns The options, with a decorated `xhr` factory.
  */
-function decorateForChunks(options) {
+function decorateForChunks(
+  options: MessageBusAjaxOptions
+): MessageBusAjaxOptions {
   if (!options?.messageBus?.chunked || typeof options.xhr !== "function") {
     return options;
   }
@@ -327,6 +419,7 @@ function decorateForChunks(options) {
       // jQuery invokes this as `options.xhr()`, and MessageBus' own factory
       // reads `this.messageBus`. Calling it any other way throws under strict
       // mode and takes down every poll, not just this tool.
+      // eslint-disable-next-line prefer-rest-params
       const xhr = originalXhr.apply(this, arguments);
       let position = 0;
 
@@ -348,11 +441,11 @@ function decorateForChunks(options) {
  * here: frames are separated by `\r\n|\r\n`, and a literal separator inside a
  * frame is escaped by doubling the pipe.
  *
- * @param {string} payload - The response body so far.
- * @param {number} position - Where the last complete frame ended.
- * @returns {number} The new cursor position.
+ * @param payload - The response body so far.
+ * @param position - Where the last complete frame ended.
+ * @returns The new cursor position.
  */
-function readChunks(payload, position) {
+function readChunks(payload: string, position: number) {
   const separator = "\r\n|\r\n";
 
   for (;;) {
@@ -367,7 +460,7 @@ function readChunks(payload, position) {
       .replace(/\r\n\|\|\r\n/g, separator);
 
     try {
-      for (const message of JSON.parse(frame)) {
+      for (const message of JSON.parse(frame) as MessageBusFrame[]) {
         recordMessage(message);
       }
     } catch {
@@ -379,7 +472,7 @@ function readChunks(payload, position) {
   }
 }
 
-function recordMessage(message) {
+function recordMessage(message: MessageBusFrame) {
   state.messages.push({
     channel: message.channel,
     messageId: message.message_id,
@@ -396,7 +489,7 @@ function recordMessage(message) {
 /**
  * Captures where `subscribe` was called from.
  *
- * @returns {string|null} A single stack frame, or null if unavailable.
+ * @returns A single stack frame, or null if unavailable.
  */
 function captureSource() {
   const lines = new Error().stack?.split("\n") ?? [];

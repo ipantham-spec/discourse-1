@@ -22,7 +22,9 @@ const TOOL_ID = "message-bus";
  */
 export default class MessageBusButton extends Component {
   get isOpen() {
-    return devToolsState.getFlag(TOOL_ID, "open") ?? false;
+    return (
+      (devToolsState.getFlag(TOOL_ID, "open") as boolean | undefined) ?? false
+    );
   }
 
   @action

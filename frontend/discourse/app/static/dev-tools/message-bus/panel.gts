@@ -3,12 +3,23 @@ import { tracked } from "@glimmer/tracking";
 import { registerDestructor } from "@ember/destroyable";
 import { on } from "@ember/modifier";
 import { action } from "@ember/object";
+import type Owner from "@ember/owner";
 import DDockPanel from "discourse/ui-kit/d-dock-panel";
 import dConcatClass from "discourse/ui-kit/helpers/d-concat-class";
 import { i18n } from "discourse-i18n";
 import { messageBusState, subscriptions } from "./instrumentation";
 
 const REFRESH_INTERVAL = 1000;
+
+interface MessageBusPanelSignature {
+  Args: {
+    /** Whether the panel is shown. */
+    isOpen?: boolean;
+
+    /** Called when the panel's close button is pressed. */
+    onClose: () => void;
+  };
+}
 
 /**
  * Shows what MessageBus is currently doing.
@@ -19,12 +30,12 @@ const REFRESH_INTERVAL = 1000;
  * messages do not need that: they are recorded into tracked state as they
  * arrive.
  */
-export default class MessageBusPanel extends Component {
-  #timer = null;
+export default class MessageBusPanel extends Component<MessageBusPanelSignature> {
+  #timer: ReturnType<typeof setInterval> | null = null;
   @tracked _refreshedAt = 0;
 
-  constructor() {
-    super(...arguments);
+  constructor(owner: Owner, args: MessageBusPanelSignature["Args"]) {
+    super(owner, args);
 
     // Deliberately not an Ember runloop timer. A repeating runloop timer never
     // lets the application settle, which would hang every test that waits for
@@ -39,10 +50,11 @@ export default class MessageBusPanel extends Component {
   /**
    * The current subscriptions, re-read whenever the refresh timer fires.
    *
-   * @returns {Array<Object>} One entry per subscription.
+   * @returns One entry per subscription.
    */
   get subscriptions() {
     // Consumed so that the timer invalidates this getter.
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
     this._refreshedAt;
 
     return subscriptions();
@@ -58,7 +70,7 @@ export default class MessageBusPanel extends Component {
    * Legal, but also what an unbalanced subscribe looks like, so it is worth
    * counting where a developer can see it.
    *
-   * @returns {number} How many subscriptions sit on a duplicated channel.
+   * @returns How many subscriptions sit on a duplicated channel.
    */
   get duplicateCount() {
     return this.subscriptions.filter((entry) => entry.duplicated).length;

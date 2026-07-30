@@ -27,7 +27,7 @@ import DAG from "discourse/lib/dag";
  */
 export const LAST_CORE_TOOL = "message-bus";
 
-let devTools;
+let devTools: DAG;
 resetDevTools();
 
 /**
@@ -53,7 +53,7 @@ function resetDevTools() {
 /**
  * Returns the registry, for reading or for adding entries directly.
  *
- * @returns {DAG} The developer tools toolbar registry.
+ * @returns The developer tools toolbar registry.
  */
 export function devToolsDAG() {
   return devTools;

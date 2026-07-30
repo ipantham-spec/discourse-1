@@ -19,7 +19,7 @@ import VerboseLocalizationButton from "./verbose-localization/button";
  * to being placed after. Renaming it means updating `LAST_CORE_TOOL` in
  * `discourse/lib/dev-tools/registry`.
  */
-const CORE_TOOLS = [
+const CORE_TOOLS: [id: string, component: unknown][] = [
   ["plugin-outlet-debug", PluginOutletDebugButton],
   ["block-debug", BlockDebugButton],
   ["upcoming-changes-debug", UpcomingChangesDebugButton],
@@ -41,7 +41,7 @@ const CORE_TOOLS = [
  */
 function seedCoreTools() {
   const registry = devToolsDAG();
-  let previous;
+  let previous: string | undefined;
 
   for (const [id, component] of CORE_TOOLS) {
     registry.add(id, component, previous ? { after: previous } : {});
@@ -59,7 +59,12 @@ export function init() {
   patchConnectors();
   patchBlockRendering();
 
-  withPluginApi((api) => {
-    api.renderInOutlet("above-site-header", Toolbar);
-  });
+  // TODO(devxp-typescript-pending): `plugin-api` is untyped JavaScript and does
+  // not export the type of the API object, so only the member used here is
+  // described. Drop this once the plugin API is authored in TypeScript.
+  withPluginApi(
+    (api: { renderInOutlet: (name: string, component: unknown) => void }) => {
+      api.renderInOutlet("above-site-header", Toolbar);
+    }
+  );
 }

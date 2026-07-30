@@ -1,6 +1,7 @@
 import Component from "@glimmer/component";
 import { tracked } from "@glimmer/tracking";
 import { action } from "@ember/object";
+import type Owner from "@ember/owner";
 import { trustHTML } from "@ember/template";
 import KeyValueStore from "discourse/lib/key-value-store";
 import dResizeEdge from "discourse/ui-kit/modifiers/d-resize-edge";
@@ -10,6 +11,31 @@ const STORE_NAMESPACE = "d_dock_panel_";
 const DEFAULT_WIDTH = 320;
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 720;
+
+interface DDockPanelSignature {
+  /** The panel itself; the surrounding layer is not addressable. */
+  Element: HTMLDivElement;
+  Args: {
+    /** Whether the panel is rendered. */
+    isOpen?: boolean;
+
+    /**
+     * Name under which the panel's width is remembered across visits. Omitting
+     * it makes a resize last only as long as the panel is rendered.
+     */
+    storageKey?: string;
+
+    /** Called with the new width, in pixels, once a resize finishes. */
+    onResize?: (width: number) => void;
+  };
+  Blocks: {
+    /** The panel's header row. Omitting it leaves the panel headerless. */
+    header: [];
+
+    /** The panel's content. */
+    body: [];
+  };
+}
 
 /**
  * A panel docked to the side of the viewport that stays open while the page
@@ -31,17 +57,17 @@ const MAX_WIDTH = 720;
  * </DDockPanel>
  * ```
  */
-export default class DDockPanel extends Component {
+export default class DDockPanel extends Component<DDockPanelSignature> {
   #store = new KeyValueStore(STORE_NAMESPACE);
   /**
    * The width in pixels, once the panel has been resized in this session.
    *
    * Null until then, so that the getter can fall back to the stored width.
    */
-  @tracked _width = null;
+  @tracked _width: number | null = null;
 
-  constructor() {
-    super(...arguments);
+  constructor(owner: Owner, args: DDockPanelSignature["Args"]) {
+    super(owner, args);
 
     // Read once at construction rather than in the getter. The stored width is
     // only a starting point, and re-reading it on every render would undo a
@@ -52,7 +78,7 @@ export default class DDockPanel extends Component {
   /**
    * The current width, clamped to the range the panel can be dragged to.
    *
-   * @returns {number} A width in pixels.
+   * @returns A width in pixels.
    */
   get width() {
     return Math.min(Math.max(this._width, MIN_WIDTH), this.maxWidth);
@@ -70,7 +96,7 @@ export default class DDockPanel extends Component {
    * actually renders. A `90vw` cap applied only in CSS would silently diverge
    * from both on a narrow viewport.
    *
-   * @returns {number} A width in pixels.
+   * @returns A width in pixels.
    */
   get maxWidth() {
     return Math.min(MAX_WIDTH, Math.round(window.innerWidth * 0.9));
@@ -82,7 +108,7 @@ export default class DDockPanel extends Component {
    * A custom property rather than an inline `width` keeps the sizing rules in
    * the stylesheet, where they can be clamped and overridden by media queries.
    *
-   * @returns {ReturnType<typeof trustHTML>} A style attribute value.
+   * @returns A style attribute value.
    */
   get style() {
     return trustHTML(`--d-dock-panel-width: ${this.width}px;`);
@@ -91,20 +117,20 @@ export default class DDockPanel extends Component {
   /**
    * Updates the rendered width without storing it.
    *
-   * @param {number} width - The width to render, in pixels.
+   * @param width - The width to render, in pixels.
    */
   @action
-  previewWidth(width) {
+  previewWidth(width: number) {
     this._width = width;
   }
 
   /**
    * Stores the width the panel was left at.
    *
-   * @param {number} width - The width to store, in pixels.
+   * @param width - The width to store, in pixels.
    */
   @action
-  commitWidth(width) {
+  commitWidth(width: number) {
     this._width = width;
 
     if (this.args.storageKey) {
@@ -117,14 +143,19 @@ export default class DDockPanel extends Component {
   /**
    * Reads the width this panel was last left at.
    *
-   * @returns {number} The stored width, or the default when there is none.
+   * @returns The stored width, or the default when there is none.
    */
   #restoreWidth() {
     if (!this.args.storageKey) {
       return DEFAULT_WIDTH;
     }
 
-    return this.#store.getObject(this.args.storageKey) ?? DEFAULT_WIDTH;
+    // `KeyValueStore` deserializes with `JSON.parse`, so what comes back is
+    // whatever was written; only this component writes under this key.
+    return (
+      (this.#store.getObject(this.args.storageKey) as number | undefined) ??
+      DEFAULT_WIDTH
+    );
   }
 
   <template>

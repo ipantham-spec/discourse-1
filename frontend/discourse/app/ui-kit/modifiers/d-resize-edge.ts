@@ -1,11 +1,49 @@
 import { registerDestructor } from "@ember/destroyable";
+import type Owner from "@ember/owner";
 import { cancel, throttle } from "@ember/runloop";
-import Modifier from "ember-modifier";
+import Modifier, { type ArgsFor } from "ember-modifier";
 
 const THROTTLE_RATE = 20;
 
 // How far a single arrow key press moves the edge, in pixels.
 const KEYBOARD_STEP = 16;
+
+interface DResizeEdgeSignature {
+  /** The element acting as the edge. */
+  Element: HTMLElement;
+  Args: {
+    Named: {
+      /** The current size, in pixels. */
+      value: number;
+
+      /** The smallest size the edge may be dragged to. */
+      min: number;
+
+      /** The largest size the edge may be dragged to. */
+      max: number;
+
+      /**
+       * Which edge the resized element is docked against, in logical terms.
+       * Combined with the writing direction this decides whether moving the
+       * pointer right makes it larger or smaller. Defaults to `"start"`.
+       */
+      side?: "start" | "end";
+
+      /**
+       * Called continuously while dragging, throttled. Suitable for updating
+       * the rendered size.
+       */
+      onResize?: (size: number) => void;
+
+      /**
+       * Called once when the interaction finishes. Suitable for persisting the
+       * size.
+       */
+      onResizeEnd?: (size: number) => void;
+    };
+    Positional: [];
+  };
+}
 
 /**
  * Makes an element behave as a draggable edge that resizes something along the
@@ -37,20 +75,12 @@ const KEYBOARD_STEP = 16;
  *   }}
  * ></div>
  * ```
- *
- * @param {number} value - The current size, in pixels.
- * @param {number} min - The smallest size the edge may be dragged to.
- * @param {number} max - The largest size the edge may be dragged to.
- * @param {"start"|"end"} [side="start"] - Which edge the resized element is
- *   docked against, in logical terms. Combined with the writing direction this
- *   decides whether moving the pointer right makes it larger or smaller.
- * @param {(size: number) => void} [onResize] - Called continuously while
- *   dragging, throttled. Suitable for updating the rendered size.
- * @param {(size: number) => void} [onResizeEnd] - Called once when the
- *   interaction finishes. Suitable for persisting the size.
  */
-export default class DResizeEdgeModifier extends Modifier {
-  #onPointerDown = (event) => {
+export default class DResizeEdgeModifier extends Modifier<DResizeEdgeSignature> {
+  /** The options from the most recent invocation, set by `modify`. */
+  declare named: DResizeEdgeSignature["Args"]["Named"];
+
+  #onPointerDown = (event: PointerEvent) => {
     // Ignore anything that is not a primary button press, so that a right
     // click or a secondary pointer cannot begin a resize.
     if (event.button !== 0) {
@@ -75,21 +105,25 @@ export default class DResizeEdgeModifier extends Modifier {
     this.#element.addEventListener("pointerup", this.#onPointerUp);
     this.#element.addEventListener("pointercancel", this.#onPointerUp);
   };
-  #onPointerMove = (event) => {
+  #onPointerMove = (event: PointerEvent) => {
     if (event.pointerId !== this.#pointerId) {
       return;
     }
 
     // Throttled because a pointer move fires far more often than a size change
     // can usefully be rendered.
+    //
+    // The cast describes the single-argument call being made: `throttle` reads
+    // its interval from the trailing argument, which its overloads cannot
+    // express next to `#reportMove`'s optional second parameter.
     this.#throttled = throttle(
       this,
-      this.#reportMove,
+      this.#reportMove as (clientX: number) => void,
       event.clientX,
       THROTTLE_RATE
     );
   };
-  #onPointerUp = (event) => {
+  #onPointerUp = (event: PointerEvent) => {
     if (event.pointerId !== this.#pointerId) {
       return;
     }
@@ -98,7 +132,7 @@ export default class DResizeEdgeModifier extends Modifier {
     this.#reportMove(event.clientX, { final: true });
     this.#releasePointer();
   };
-  #onKeyDown = (event) => {
+  #onKeyDown = (event: KeyboardEvent) => {
     const { value, min, max } = this.named;
     let next;
 
@@ -125,18 +159,22 @@ export default class DResizeEdgeModifier extends Modifier {
     this.named.onResize?.(clamped);
     this.named.onResizeEnd?.(clamped);
   };
-  #element;
-  #pointerId = null;
+  #element: HTMLElement;
+  #pointerId: number | null = null;
   #startCoordinate = 0;
   #startValue = 0;
-  #throttled;
+  #throttled?: ReturnType<typeof throttle>;
 
-  constructor(owner, args) {
+  constructor(owner: Owner, args: ArgsFor<DResizeEdgeSignature>) {
     super(owner, args);
     registerDestructor(this, (instance) => instance.cleanup());
   }
 
-  modify(element, _positional, named) {
+  modify(
+    element: HTMLElement,
+    _positional: [],
+    named: DResizeEdgeSignature["Args"]["Named"]
+  ) {
     this.#element = element;
     this.named = named;
 
@@ -160,7 +198,7 @@ export default class DResizeEdgeModifier extends Modifier {
    * direction, so `side` is interpreted logically and flipped under RTL —
    * otherwise the edge would move away from the pointer dragging it.
    *
-   * @returns {number} Either 1 or -1.
+   * @returns Either 1 or -1.
    */
   get #growthDirection() {
     const logical = this.named.side === "end" ? -1 : 1;
@@ -169,7 +207,7 @@ export default class DResizeEdgeModifier extends Modifier {
     return logical * (rtl ? -1 : 1);
   }
 
-  #reportMove(clientX, { final = false } = {}) {
+  #reportMove(clientX: number, { final = false }: { final?: boolean } = {}) {
     const delta = (clientX - this.#startCoordinate) * this.#growthDirection;
     const size = this.#clamp(this.#startValue + delta);
 
@@ -180,7 +218,7 @@ export default class DResizeEdgeModifier extends Modifier {
     }
   }
 
-  #clamp(size) {
+  #clamp(size: number) {
     return Math.min(Math.max(size, this.named.min), this.named.max);
   }
 
