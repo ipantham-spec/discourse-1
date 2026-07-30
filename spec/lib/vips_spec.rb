@@ -49,4 +49,14 @@ RSpec.describe Vips do
       expect(format).to include("VIPS_FORMAT_UCHAR")
     end
   end
+
+  describe ".dominant_color" do
+    it "returns the image color as uppercase RGB hex" do
+      input = file_from_fixtures("logo.png").path
+
+      color = described_class.dominant_color(input)
+
+      expect(color).to eq("514C3F")
+    end
+  end
 end

@@ -395,7 +395,7 @@ class Upload < ActiveRecord::Base
 
       color ||=
         begin
-          Vips::DominantColor.extract(local_path)
+          Vips.dominant_color(local_path)
         rescue Discourse::Utils::CommandError
           # Timeout or unable to parse image
           # This can happen due to bad user input - ignore and save

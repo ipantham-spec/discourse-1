@@ -2,7 +2,7 @@
 
 require "tmpdir"
 
-module Vips
+class Vips
   DEFAULT_TIMEOUT = 30
   RLIMITS = {
     cpu_seconds: 300,
@@ -40,6 +40,53 @@ module Vips
     )
   end
 
+  def self.dominant_color(path)
+    Dir.mktmpdir("dominant-color") do |directory|
+      thumbnail = File.join(directory, "thumbnail.v")
+      profile = Rails.root.join("vendor/data/RT_sRGB.icm").to_s
+
+      call(
+        "thumbnail",
+        path,
+        thumbnail,
+        "1",
+        "--height",
+        "1",
+        "--size",
+        "force",
+        "--output-profile",
+        profile,
+        read: [path, profile],
+        write: [directory],
+        nice: 10,
+        timeout: Upload::DOMINANT_COLOR_COMMAND_TIMEOUT_SECONDS,
+      )
+
+      output =
+        call(
+          "getpoint",
+          thumbnail,
+          "0",
+          "0",
+          read: [thumbnail],
+          timeout: Upload::DOMINANT_COLOR_COMMAND_TIMEOUT_SECONDS,
+          allow_untrusted: true,
+        )
+      components = output.split.map { |component| Float(component, exception: false) }
+      if components.empty? || components.any?(&:nil?)
+        raise "Calculated dominant color but unable to parse output:\n#{output}"
+      end
+      components = [components.first] * 3 if components.length < 3
+
+      components
+        .first(3)
+        .map { |component| component.round.clamp(0, 255) }
+        .map { |component| component.to_s(16).rjust(2, "0") }
+        .join
+        .upcase
+    end
+  end
+
   def self.run(*command, read:, write:, timeout:, allow_untrusted:, failure_message:)
     Dir.mktmpdir("discourse-vips-") do |scratch|
       environment = {
@@ -66,4 +113,5 @@ module Vips
     end
   end
   private_class_method :run
+  private_constant :DEFAULT_TIMEOUT, :RLIMITS
 end

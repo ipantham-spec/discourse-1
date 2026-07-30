@@ -1020,9 +1020,7 @@ RSpec.describe Upload do
     end
 
     it "raises when the dominant color output cannot be parsed" do
-      Vips::DominantColor.stubs(:extract).raises(
-        "Calculated dominant color but unable to parse output",
-      )
+      Vips.stubs(:dominant_color).raises("Calculated dominant color but unable to parse output")
 
       expect(invalid_image.dominant_color).to eq(nil)
 
