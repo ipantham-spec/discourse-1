@@ -219,7 +219,7 @@ The namespace is declared once and becomes the relationship name and the prefix 
 
 ### API key scopes
 
-Scopes are derived, not hand-listed in a central file. Every routed endpoint contributes its actions to a scope named after its resource type (`index`/`show` → `read`, then `create`, `update`, `delete`), and the result plugs into the existing scope system, so API keys, the admin UI, and restricting a key to specific ids all keep working with no changes on core's side. The only thing an endpoint has to provide is a description for the admin UI, and a spec fails if it's missing.
+Scopes are derived, not hand-listed in a central file. Every routed endpoint contributes its actions to a scope named after its resource type (`index`/`show` → `read`, then `create`, `update`, `delete`), and the result plugs into the existing scope system, so API keys, the admin UI, and restricting a key to specific ids all keep working with no changes on core's side. An endpoint that needs something else declares it (`api_scopes :admin_queries`, or its own grouping of actions), and the only thing it has to provide is a description for the admin UI, with a spec failing if it's missing.
 
 ### Safety net
 
