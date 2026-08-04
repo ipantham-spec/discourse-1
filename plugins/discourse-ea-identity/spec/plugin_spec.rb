@@ -343,7 +343,7 @@ describe EaIdentityAuthenticator do
     end
   end
 
-  describe "token endpoint authentication method" do
+  describe "token endpoint mutual-TLS authentication" do
     def self_signed_pair
       key = OpenSSL::PKey::RSA.new(2048)
       name = OpenSSL::X509::Name.parse("/CN=token-auth")
@@ -359,41 +359,18 @@ describe EaIdentityAuthenticator do
       [cert, key]
     end
 
-    it "defaults to client_secret" do
-      expect(authenticator.token_auth_via_certificate?).to eq(false)
-    end
-
-    it "is certificate mode when selected" do
-      SiteSetting.ea_identity_token_auth_method = "certificate"
-      expect(authenticator.token_auth_via_certificate?).to eq(true)
-    end
-
-    it "uses the oauth2_basic provider name (callback) for client secret auth" do
-      SiteSetting.ea_identity_token_auth_method = "client_secret"
-      expect(authenticator.name).to eq("oauth2_basic")
-    end
-
-    it "uses the oidc provider name (callback) for certificate auth" do
-      SiteSetting.ea_identity_token_auth_method = "certificate"
+    it "uses the oidc provider name (callback)" do
       expect(authenticator.name).to eq("oidc")
     end
 
-    it "auto-routes the token endpoint to the mTLS host in certificate mode" do
-      SiteSetting.ea_identity_token_auth_method = "certificate"
+    it "auto-routes the token endpoint to the mTLS host" do
       SiteSetting.ea_identity_token_url = "https://accounts.int.ea.com/connect/token"
       expect(authenticator.token_endpoint_url).to eq("https://accounts2s.int.ea.com/connect/token")
     end
 
-    it "leaves an already-mTLS token host unchanged in certificate mode" do
-      SiteSetting.ea_identity_token_auth_method = "certificate"
+    it "leaves an already-mTLS token host unchanged" do
       SiteSetting.ea_identity_token_url = "https://accounts2s.int.ea.com/connect/token"
       expect(authenticator.token_endpoint_url).to eq("https://accounts2s.int.ea.com/connect/token")
-    end
-
-    it "does not rewrite the token host for client secret auth" do
-      SiteSetting.ea_identity_token_auth_method = "client_secret"
-      SiteSetting.ea_identity_token_url = "https://accounts.int.ea.com/connect/token"
-      expect(authenticator.token_endpoint_url).to eq("https://accounts.int.ea.com/connect/token")
     end
 
     it "builds token SSL options from the dedicated auth certificate" do

@@ -6,18 +6,12 @@ require "fileutils"
 
 class EaIdentityAuthenticator < Auth::ManagedAuthenticator
   # The provider name drives the login button link, the OAuth callback path
-  # (/auth/<name>/callback), and the find_authenticator lookup. We reuse an
-  # existing provider name so EA can keep a redirect URI it already trusts:
-  #
-  #   - client secret auth -> "oauth2_basic" -> /auth/oauth2_basic/callback
-  #   - certificate auth   -> "oidc"         -> /auth/oidc/callback
-  #
-  # The matching bundled plugin (discourse-oauth2-basic or discourse-openid-connect)
-  # must stay disabled to avoid a provider-name clash. Changing the token auth
-  # method changes the provider name, so existing account associations are keyed
-  # under the previous name until re-linked.
+  # (/auth/<name>/callback), and the find_authenticator lookup. We reuse the
+  # "oidc" provider name so EA can keep the /auth/oidc/callback redirect URI it
+  # already trusts. The bundled discourse-openid-connect plugin must stay
+  # disabled to avoid a provider-name clash.
   def name
-    token_auth_via_certificate? ? "oidc" : "oauth2_basic"
+    "oidc"
   end
 
   def enabled?
@@ -47,7 +41,6 @@ class EaIdentityAuthenticator < Auth::ManagedAuthenticator
                         lambda { |env|
                           opts = env["omniauth.strategy"].options
                           opts[:client_id] = SiteSetting.ea_identity_client_id
-                          opts[:client_secret] = SiteSetting.ea_identity_client_secret
                           opts[:client_options] = {
                             authorize_url: SiteSetting.ea_identity_authorize_url,
                             token_url: token_endpoint_url,
@@ -63,29 +56,13 @@ class EaIdentityAuthenticator < Auth::ManagedAuthenticator
                             .split("|")
                             .map(&:to_sym)
 
-                          if token_auth_via_certificate?
-                            # RFC 8705 tls_client_auth: authenticate to the token
-                            # endpoint with a client certificate. The oauth2
-                            # :tls_client_auth scheme sends only client_id (no
-                            # client_secret), and we present the auth certificate
-                            # on the TLS connection.
-                            opts[:client_options][:connection_opts][:ssl] = token_ssl_options
-                            opts[:client_options][:auth_scheme] = :tls_client_auth
-                          elsif SiteSetting.ea_identity_send_auth_header? &&
-                                SiteSetting.ea_identity_send_auth_body?
-                            # Some providers require credentials in both the header
-                            # and the body; include both for maximum compatibility.
-                            opts[:client_options][:auth_scheme] = :request_body
-                            opts[:token_params] = {
-                              headers: {
-                                "Authorization" => basic_auth_header,
-                              },
-                            }
-                          elsif SiteSetting.ea_identity_send_auth_header?
-                            opts[:client_options][:auth_scheme] = :basic_auth
-                          else
-                            opts[:client_options][:auth_scheme] = :request_body
-                          end
+                          # RFC 8705 tls_client_auth: authenticate to the token
+                          # endpoint with a client certificate. The oauth2
+                          # :tls_client_auth scheme sends only client_id (no
+                          # client_secret), and we present the auth certificate
+                          # on the TLS connection.
+                          opts[:client_options][:connection_opts][:ssl] = token_ssl_options
+                          opts[:client_options][:auth_scheme] = :tls_client_auth
 
                           if SiteSetting.ea_identity_scope.present?
                             opts[:scope] = SiteSetting.ea_identity_scope
@@ -113,13 +90,6 @@ class EaIdentityAuthenticator < Auth::ManagedAuthenticator
                         }
   end
 
-  def basic_auth_header
-    "Basic " +
-      Base64.strict_encode64(
-        "#{SiteSetting.ea_identity_client_id}:#{SiteSetting.ea_identity_client_secret}",
-      )
-  end
-
   # Extra static query parameters appended to the authorization request (Call 1),
   # e.g. EA's release_type, display, hide_create or prompt. Configured as a
   # pipe-delimited list of key=value pairs: "release_type=123|display=junoWeb/login".
@@ -135,20 +105,12 @@ class EaIdentityAuthenticator < Auth::ManagedAuthenticator
       end
   end
 
-  # Whether the token endpoint (Call 2) is authenticated with a client
-  # certificate rather than a shared secret.
-  def token_auth_via_certificate?
-    SiteSetting.ea_identity_token_auth_method == "certificate"
-  end
-
   # EA exposes a separate server-to-server host for mutual-TLS client
-  # authentication at the token endpoint. When certificate auth is selected but
-  # the configured token URL still points at the browser-facing host, transparently
-  # route to the mTLS host so the client certificate is actually requested.
+  # authentication at the token endpoint. When the configured token URL still
+  # points at the browser-facing host, transparently route to the mTLS host so
+  # the client certificate is actually requested.
   def token_endpoint_url
-    url = SiteSetting.ea_identity_token_url
-    return url unless token_auth_via_certificate?
-    url.sub("://accounts.int.ea.com/", "://accounts2s.int.ea.com/")
+    SiteSetting.ea_identity_token_url.sub("://accounts.int.ea.com/", "://accounts2s.int.ea.com/")
   end
 
   # Shared builder: Faraday client-certificate SSL options from PEM strings.

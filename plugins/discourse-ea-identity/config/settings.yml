@@ -20,20 +20,10 @@ discourse_ea_identity:
   ea_identity_user_json_url:
     default: ""
 
-  # --- Token endpoint (Call 2) authentication method ---
-  # Choose how Discourse authenticates itself when exchanging the code for a
-  # token: with a shared client secret, or with a client certificate (mutual
-  # TLS client authentication, RFC 8705). This is independent of the mutual TLS
-  # used for the identity endpoint below.
-  ea_identity_token_auth_method:
-    default: "client_secret"
-    type: enum
-    choices:
-      - client_secret
-      - certificate
-  ea_identity_client_secret:
-    default: ""
-    secret: true
+  # --- Token endpoint (Call 2) mutual-TLS client authentication ---
+  # Discourse authenticates itself when exchanging the code for a token using a
+  # client certificate (mutual TLS client authentication, RFC 8705). This is
+  # independent of the mutual TLS used for the identity endpoint below.
   ea_identity_auth_client_certificate:
     default: ""
     textarea: true
@@ -156,12 +146,6 @@ discourse_ea_identity:
     hidden: true
   ea_identity_use_pkce:
     default: false
-    hidden: true
-  ea_identity_send_auth_header:
-    default: true
-    hidden: true
-  ea_identity_send_auth_body:
-    default: true
     hidden: true
   ea_identity_ca_certificate:
     default: ""

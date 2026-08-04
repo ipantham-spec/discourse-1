@@ -5,10 +5,9 @@ authorization-code flow. It is modeled on `discourse-oauth2-basic` but adds the
 pieces the EA flow requires and that the basic plugin cannot express through
 configuration alone:
 
-- **Two token-endpoint auth methods.** Authenticate the token exchange with a
-  shared client secret, or with a client certificate (mutual-TLS client
-  authentication, RFC 8705) — chosen per deployment and independent of the
-  identity endpoint's mutual TLS.
+- **Mutual-TLS token exchange.** The token exchange is authenticated with a
+  client certificate (mutual-TLS client authentication, RFC 8705), independent
+  of the identity endpoint's mutual TLS.
 - **Mutual TLS (mTLS) for identity.** A separate client certificate, private key
   (with optional passphrase) and optional CA bundle are presented on the request
   to the EA identity endpoint.
@@ -24,22 +23,20 @@ configuration alone:
 ### The login flow
 
 1. The user is redirected to `ea_identity_authorize_url` to sign in.
-2. EA redirects back to the callback (`/auth/oauth2_basic/callback`, or `/auth/oidc/callback` in certificate mode) with a one-time code.
+2. EA redirects back to the callback (`/auth/oidc/callback`) with a one-time code.
 3. Discourse exchanges the code for an access token at `ea_identity_token_url`,
-   authenticating with either the client secret or a client certificate
-   (`ea_identity_token_auth_method`).
+   authenticating with a client certificate (mutual TLS).
 4. Discourse calls `ea_identity_user_json_url` with the access token in the
    `X-ACCESS-TOKEN` header (over mutual TLS) to fetch the profile — unless an
    `id_token` fast-path is enabled and available.
 
-The callback path depends on the token auth method, reusing an existing
-provider name so EA can keep a redirect URI it already trusts:
+The plugin reuses the `oidc` provider name so EA can keep a redirect URI it
+already trusts:
 
-- `client_secret` → `/auth/oauth2_basic/callback` (keep `discourse-oauth2-basic` disabled)
-- `certificate` → `/auth/oidc/callback` (keep `discourse-openid-connect` disabled)
+- `/auth/oidc/callback` (keep `discourse-openid-connect` disabled to avoid a
+  provider-name clash)
 
-Register the matching redirect URI with EA for the method you use. Switching the
-method changes the provider name, so re-link any existing accounts.
+Register that redirect URI with EA.
 
 ### Configuration
 
@@ -55,9 +52,7 @@ and test EA SSO:
 | `ea_identity_authorize_url` | Authorization URL (step 1) |
 | `ea_identity_token_url` | Token URL (step 3) |
 | `ea_identity_user_json_url` | Identity endpoint (step 4) |
-| `ea_identity_token_auth_method` | `client_secret` or `certificate` for the token endpoint |
-| `ea_identity_client_secret` | Client secret (when method is `client_secret`) |
-| `ea_identity_auth_client_certificate` / `ea_identity_auth_client_key` / `ea_identity_auth_client_key_passphrase` | Client certificate used for token-endpoint mTLS (when method is `certificate`) |
+| `ea_identity_auth_client_certificate` / `ea_identity_auth_client_key` / `ea_identity_auth_client_key_passphrase` | Client certificate used for the token-endpoint mutual TLS |
 | `ea_identity_client_certificate` / `ea_identity_client_key` / `ea_identity_client_key_passphrase` | Client certificate for the identity endpoint's mutual TLS |
 
 The token endpoint and the identity endpoint use **separate** certificate

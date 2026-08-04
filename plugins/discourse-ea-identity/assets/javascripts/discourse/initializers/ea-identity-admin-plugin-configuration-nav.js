@@ -15,8 +15,6 @@ const EA_SETTING_LABELS = {
   ea_identity_client_id: "EA SSO client ID",
   ea_identity_authorize_url: "EA SSO authorize URL",
   ea_identity_token_url: "EA SSO token URL",
-  ea_identity_token_auth_method: "EA SSO token auth method",
-  ea_identity_client_secret: "EA SSO client secret",
 
   // Token-endpoint mutual TLS (authenticates Discourse at the SSO token URL)
   ea_identity_auth_client_certificate: "EA SSO cert (token mTLS)",
