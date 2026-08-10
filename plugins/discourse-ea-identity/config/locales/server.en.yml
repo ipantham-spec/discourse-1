@@ -45,6 +45,7 @@ en:
     ea_identity_overrides_email: "Override the Discourse email with the EA email on every login."
     ea_identity_json_groups_path: "Path in the identity JSON to an array of role objects. eg: response.activeRoles. Leave blank to disable group syncing."
     ea_identity_groups_property: "Which property of each role object to use as the group name."
+    ea_identity_auto_create_groups: "Automatically create a basic Discourse group for each EA role and add the user to it on login. When disabled, roles are exposed as associated groups that an admin links manually."
     ea_identity_use_id_token: "When the token exchange returns an id_token, read the user's details from its claims and skip the identity endpoint call. Note: the id_token signature is not verified."
     ea_identity_id_token_user_id_claim: "The id_token claim holding the user id (falls back to 'sub')."
     ea_identity_id_token_email_claim: "The id_token claim holding the user's email."

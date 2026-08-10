@@ -257,31 +257,105 @@ describe EaIdentityAuthenticator do
       {
         response: {
           email: "player@example.com",
-          activeRoles: [{ id: "1", name: "moderators" }, { id: "2", name: "vip" }],
+          activeRoles: [{ id: "1", name: "council" }, { id: "2", name: "vip" }],
         },
       }.to_json
     end
 
     it "extracts the name property from each role object by default" do
-      stub_request(:get, SiteSetting.ea_identity_user_json_url).to_return(status: 200, body: body)
-      result = authenticator.after_authenticate(auth)
-      expect(result.associated_groups).to eq(
-        [{ id: "moderators", name: "moderators" }, { id: "vip", name: "vip" }],
-      )
+      json = JSON.parse(body)
+      expect(authenticator.send(:groups_from, json)).to eq(%w[council vip])
     end
 
     it "can extract the id property instead" do
       SiteSetting.ea_identity_groups_property = "id"
-      stub_request(:get, SiteSetting.ea_identity_user_json_url).to_return(status: 200, body: body)
-      result = authenticator.after_authenticate(auth)
-      expect(result.associated_groups).to eq([{ id: "1", name: "1" }, { id: "2", name: "2" }])
+      json = JSON.parse(body)
+      expect(authenticator.send(:groups_from, json)).to eq(%w[1 2])
     end
 
     it "returns an empty array when the path resolves to a non-array" do
       SiteSetting.ea_identity_json_groups_path = "response.email"
-      stub_request(:get, SiteSetting.ea_identity_user_json_url).to_return(status: 200, body: body)
-      result = authenticator.after_authenticate(auth)
-      expect(result.associated_groups).to eq([])
+      json = JSON.parse(body)
+      expect(authenticator.send(:groups_from, json)).to eq([])
+    end
+
+    context "when auto-creating groups (default)" do
+      it "creates a basic group per role and adds an existing user" do
+        user = Fabricate(:user, email: "player@example.com")
+        stub_request(:get, SiteSetting.ea_identity_user_json_url).to_return(status: 200, body: body)
+
+        authenticator.after_authenticate(auth)
+
+        council = Group.find_by("lower(name) = ?", "council")
+        vip = Group.find_by("lower(name) = ?", "vip")
+        expect(council).to be_present
+        expect(vip).to be_present
+        expect(council.custom_fields["ea_identity_managed"]).to eq("t")
+        expect(council.users).to include(user)
+        expect(vip.users).to include(user)
+      end
+
+      it "reuses an existing non-automatic group with the same name" do
+        existing = Fabricate(:group, name: "council")
+        user = Fabricate(:user, email: "player@example.com")
+        stub_request(:get, SiteSetting.ea_identity_user_json_url).to_return(status: 200, body: body)
+
+        authenticator.after_authenticate(auth)
+
+        expect(Group.where("lower(name) = ?", "council").count).to eq(1)
+        expect(existing.reload.users).to include(user)
+      end
+
+      it "never joins a Discourse automatic group when a role name collides" do
+        body_with_reserved = {
+          response: {
+            email: "player@example.com",
+            activeRoles: [{ name: "moderators" }],
+          },
+        }.to_json
+        user = Fabricate(:user, email: "player@example.com")
+        stub_request(:get, SiteSetting.ea_identity_user_json_url).to_return(
+          status: 200,
+          body: body_with_reserved,
+        )
+
+        authenticator.after_authenticate(auth)
+
+        expect(user.reload.moderator).to eq(false)
+        expect(Group.find_by(name: "moderators").users).not_to include(user)
+      end
+
+      it "sanitizes role names into valid group names" do
+        body_with_spaces = {
+          response: {
+            email: "player@example.com",
+            activeRoles: [{ name: "Beta Testers" }],
+          },
+        }.to_json
+        user = Fabricate(:user, email: "player@example.com")
+        stub_request(:get, SiteSetting.ea_identity_user_json_url).to_return(
+          status: 200,
+          body: body_with_spaces,
+        )
+
+        authenticator.after_authenticate(auth)
+
+        group = Group.find_by("lower(name) = ?", "beta_testers")
+        expect(group).to be_present
+        expect(group.users).to include(user)
+      end
+    end
+
+    context "when auto-create is disabled" do
+      before { SiteSetting.ea_identity_auto_create_groups = false }
+
+      it "falls back to associated groups for an admin to link" do
+        stub_request(:get, SiteSetting.ea_identity_user_json_url).to_return(status: 200, body: body)
+        result = authenticator.after_authenticate(auth)
+        expect(result.associated_groups).to eq(
+          [{ id: "council", name: "council" }, { id: "vip", name: "vip" }],
+        )
+      end
     end
   end
 

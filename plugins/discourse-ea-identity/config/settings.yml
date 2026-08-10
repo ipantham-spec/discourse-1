@@ -134,6 +134,9 @@ discourse_ea_identity:
       - name
       - id
     hidden: true
+  ea_identity_auto_create_groups:
+    default: true
+    hidden: true
   ea_identity_scope:
     default: ""
     hidden: true

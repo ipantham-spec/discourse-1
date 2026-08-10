@@ -241,8 +241,30 @@ class EaIdentityAuthenticator < Auth::ManagedAuthenticator
     result = super(auth, existing_account: existing_account)
 
     if fetched_user_details && provides_groups?
-      groups = fetched_user_details[:groups] || []
-      result.associated_groups = groups.map { |g| { id: g, name: g } }
+      group_names = fetched_user_details[:groups] || []
+
+      if SiteSetting.ea_identity_auto_create_groups
+        # Create a basic Discourse group for each EA role (when missing) and add
+        # the user to it. Membership is additive: roles that disappear are not
+        # removed here. New accounts have no user yet, so the role list is
+        # stashed on extra_data and applied in after_create_account.
+        sync_ea_groups(result.user, group_names) if result.user
+        result.extra_data = (result.extra_data || {}).merge(ea_groups: group_names)
+      else
+        result.associated_groups = group_names.map { |g| { id: g, name: g } }
+      end
+    end
+
+    result
+  end
+
+  def after_create_account(user, auth_result)
+    result = super
+
+    if SiteSetting.ea_identity_auto_create_groups
+      extra = auth_result[:extra_data] || {}
+      group_names = extra[:ea_groups] || extra["ea_groups"]
+      sync_ea_groups(user, group_names) if group_names.present?
     end
 
     result
@@ -519,6 +541,63 @@ class EaIdentityAuthenticator < Auth::ManagedAuthenticator
 
     property = SiteSetting.ea_identity_groups_property
     value.map { |entry| entry.is_a?(Hash) ? entry[property] : entry }.compact.map(&:to_s)
+  end
+
+  # Additively ensure the user belongs to a basic Discourse group for each EA
+  # role. Groups are created on first encounter and marked as EA-managed via a
+  # custom field so admin-created groups are never mistaken for ours.
+  def sync_ea_groups(user, raw_names)
+    return if user.nil?
+
+    Array(raw_names).each do |raw_name|
+      group = find_or_create_ea_group(raw_name)
+      next if group.nil?
+      group.add(user) unless group.users.exists?(id: user.id)
+    end
+  rescue => e
+    Rails.logger.warn(
+      "EA Identity: group sync failed for user #{user&.id}: #{e.class} #{e.message}",
+    )
+  end
+
+  def find_or_create_ea_group(raw_name)
+    name = sanitize_group_name(raw_name)
+    return nil if name.blank?
+
+    group = Group.find_by("lower(name) = ?", name.downcase)
+    if group
+      # Never join or manage Discourse automatic/system groups (admins,
+      # moderators, staff, trust_level_*) — a colliding role name must not
+      # escalate privileges.
+      return nil if group.automatic?
+      return group
+    end
+
+    group =
+      Group.create!(
+        name: name,
+        full_name: raw_name.to_s.strip.presence,
+        visibility_level: Group.visibility_levels[:public],
+        members_visibility_level: Group.visibility_levels[:public],
+      )
+    group.custom_fields["ea_identity_managed"] = "t"
+    group.custom_fields["ea_identity_role"] = raw_name.to_s
+    group.save_custom_fields
+    group
+  rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
+    Group.find_by("lower(name) = ?", name.downcase)
+  end
+
+  # EA role names may contain spaces or characters Discourse group names
+  # disallow. Normalize to a valid group name (letters, digits, ._-) within the
+  # username length cap.
+  def sanitize_group_name(raw_name)
+    name = raw_name.to_s.unicode_normalize.strip
+    name = name.gsub(/\s+/, "_").gsub(/[^a-zA-Z0-9_.\-]/, "")
+    name = name.gsub(/_+/, "_").gsub(/\A[_.\-]+|[_.\-]+\z/, "")
+    max = SiteSetting.max_username_length
+    name = name[0, max] if max && name.length > max
+    name
   end
 
   def json_walk(result, user_json, prop)
