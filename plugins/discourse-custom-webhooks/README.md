@@ -10,6 +10,10 @@ from the admin UI.
 > **End-to-end integration guide (Discourse + forums together):**
 > [`docs/INTEGRATION.md`](docs/INTEGRATION.md) — the three flows, endpoint map,
 > payloads, and a scenario-by-scenario "what to expect / what is done" table.
+>
+> **Runnable API samples (requests & real responses):**
+> [`docs/SAMPLES.md`](docs/SAMPLES.md) — copy-paste `curl` calls for every
+> scenario, with the exact request/response bodies captured from a live stack.
 
 ## Admin UI
 

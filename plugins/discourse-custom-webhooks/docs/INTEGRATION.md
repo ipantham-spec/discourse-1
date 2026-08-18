@@ -8,6 +8,7 @@ applies verdicts.
 
 - Forums-side guide (engines, SQS, class map): `forums/src/main/java/.../discourse/README.md`
 - Discourse plugin reference: [`../README.md`](../README.md)
+- Runnable API samples (requests & real responses): [`SAMPLES.md`](SAMPLES.md)
 - Design/review: https://developer.ea.com/display/WWCE/Discourse+webhook
 
 > **Who owns what**
