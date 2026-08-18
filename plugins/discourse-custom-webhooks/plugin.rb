@@ -45,20 +45,26 @@ after_initialize do
 
   register_reviewable_type ReviewableCustomWebhooksModeration
 
-  # Enqueues a moderation event for a post-based event when it is one of the
-  # The async event path is for IMAGES only (hold-pending → CTD/CSAM). Text is
-  # gated inline pre-publish by the composer nudge (Khoros nudging parity), so a
-  # text-only post produces no async event. Delivery is out-of-band so posting is
-  # never blocked by the round trip.
+  # Enqueues a moderation event for every eligible post-based event. Images are
+  # hold-pending (hidden immediately, unhidden on a clean verdict) → CTD/CSAM.
+  # Text is ALSO re-checked here, after the post already exists — this is a
+  # deliberate, EA-approved deviation from strict Khoros parity: the composer
+  # nudge alone (Khoros parity) never escalates to a moderator queue, so if the
+  # author picks "Post anyway" after being nudged, this async re-check is what
+  # still gets a violation into `/review`. Delivery is out-of-band (a background
+  # job) so posting is never blocked by the round trip.
   emit_for_post =
     lambda do |post, event|
       return unless DiscourseCustomWebhooks::Emitter.enabled?
       return unless DiscourseCustomWebhooks::Emitter.eligible?(post)
       return unless DiscourseCustomWebhooks::Emitter.subscribed?(event)
-      return unless SiteSetting.custom_webhooks_include_images
-      return unless DiscourseCustomWebhooks::Emitter.post_has_image?(post)
 
-      if SiteSetting.custom_webhooks_hold_images_pending && !post.hidden?
+      has_image =
+        SiteSetting.custom_webhooks_include_images &&
+          DiscourseCustomWebhooks::Emitter.post_has_image?(post)
+      return unless has_image || SiteSetting.custom_webhooks_check_text
+
+      if has_image && SiteSetting.custom_webhooks_hold_images_pending && !post.hidden?
         post.hide!(PostActionType.types[:inappropriate])
       end
 

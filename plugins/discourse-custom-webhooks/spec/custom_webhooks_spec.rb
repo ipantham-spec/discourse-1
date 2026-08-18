@@ -133,10 +133,11 @@ describe "Custom webhooks" do
     end
   end
 
-  describe "event hooks (async path = image posts only)" do
-    it "does not enqueue async for a text-only post (text is gated inline)" do
+  describe "event hooks (async recheck: images + text)" do
+    it "enqueues async for a text-only post so the async pipeline can re-check it" do
       SiteSetting.custom_webhooks_include_images = true
-      expect_not_enqueued_with(job: :custom_webhooks_emit_event) do
+      SiteSetting.custom_webhooks_check_text = true
+      expect_enqueued_with(job: :custom_webhooks_emit_event) do
         PostCreator.create!(user, title: "Text only topic here", raw: "no image, just words")
       end
     end
@@ -158,14 +159,28 @@ describe "Custom webhooks" do
       end
     end
 
-    it "does not enqueue when image scanning is disabled" do
+    it "still enqueues a text-only post when image scanning is disabled" do
       SiteSetting.custom_webhooks_include_images = false
+      SiteSetting.custom_webhooks_check_text = true
       DiscourseCustomWebhooks::Emitter.stubs(:post_has_image?).returns(true)
-      expect_not_enqueued_with(job: :custom_webhooks_emit_event) do
+      expect_enqueued_with(job: :custom_webhooks_emit_event) do
         PostCreator.create!(
           user,
           title: "Images disabled topic",
           raw: "has an image but scanning off",
+        )
+      end
+    end
+
+    it "does not enqueue when both text checking and image scanning are disabled" do
+      SiteSetting.custom_webhooks_include_images = false
+      SiteSetting.custom_webhooks_check_text = false
+      DiscourseCustomWebhooks::Emitter.stubs(:post_has_image?).returns(true)
+      expect_not_enqueued_with(job: :custom_webhooks_emit_event) do
+        PostCreator.create!(
+          user,
+          title: "Nothing to check topic",
+          raw: "no text check, no image check",
         )
       end
     end
