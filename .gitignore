@@ -50,6 +50,7 @@
 !/plugins/discourse-oauth2-basic
 !/plugins/discourse-openid-connect
 !/plugins/discourse-ea-identity
+!/plugins/discourse-custom-webhooks
 !/plugins/discourse-zendesk-plugin
 !/plugins/discourse-patreon
 !/plugins/discourse-graphviz

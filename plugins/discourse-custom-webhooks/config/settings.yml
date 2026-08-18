@@ -1,0 +1,100 @@
+discourse_custom_webhooks:
+  # --- Core ---
+  custom_webhooks_enabled:
+    default: false
+    client: true
+    area: "custom_webhooks"
+  custom_webhooks_payload_url:
+    default: ""
+    area: "custom_webhooks"
+  custom_webhooks_events:
+    type: list
+    list_type: compact
+    default: "post_created|post_edited"
+    choices:
+      - post_created
+      - post_edited
+      - topic_created
+    area: "custom_webhooks"
+  custom_webhooks_sso_provider:
+    default: "oidc"
+    area: "custom_webhooks"
+  custom_webhooks_include_images:
+    default: true
+    area: "custom_webhooks"
+  custom_webhooks_http_method:
+    type: enum
+    default: "POST"
+    choices:
+      - POST
+      - PUT
+    area: "custom_webhooks"
+  custom_webhooks_content_type:
+    type: enum
+    default: "application/json"
+    choices:
+      - application/json
+      - application/x-www-form-urlencoded
+    area: "custom_webhooks"
+  custom_webhooks_request_timeout_seconds:
+    type: integer
+    default: 10
+    min: 1
+    max: 60
+    area: "custom_webhooks"
+
+  # --- Moderation loop ---
+  custom_webhooks_text_check_url:
+    default: ""
+    area: "custom_webhooks"
+  custom_webhooks_check_text:
+    default: true
+    client: true
+    area: "custom_webhooks"
+  custom_webhooks_hold_images_pending:
+    default: true
+    area: "custom_webhooks"
+  custom_webhooks_callback_secret:
+    default: ""
+    secret: true
+    area: "custom_webhooks"
+
+  # --- Signing (HMAC-SHA256 over the raw request body) ---
+  custom_webhooks_secret:
+    default: ""
+    secret: true
+    area: "custom_webhooks"
+  custom_webhooks_signature_header:
+    default: "X-Discourse-Signature"
+    area: "custom_webhooks"
+
+  # --- Optional static request headers ("Header-Name: value" per line) ---
+  custom_webhooks_extra_headers:
+    type: list
+    list_type: simple
+    default: ""
+    area: "custom_webhooks"
+
+  # --- Mutual TLS (client certificate authentication) ---
+  custom_webhooks_client_certificate:
+    default: ""
+    textarea: true
+    secret: true
+    area: "custom_webhooks"
+  custom_webhooks_client_key:
+    default: ""
+    textarea: true
+    secret: true
+    area: "custom_webhooks"
+  custom_webhooks_client_key_passphrase:
+    default: ""
+    secret: true
+    area: "custom_webhooks"
+  custom_webhooks_ca_certificate:
+    default: ""
+    textarea: true
+    secret: true
+    area: "custom_webhooks"
+  custom_webhooks_verify_ssl:
+    default: true
+    area: "custom_webhooks"

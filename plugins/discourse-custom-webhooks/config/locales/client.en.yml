@@ -1,0 +1,44 @@
+en:
+  admin_js:
+    admin:
+      site_settings:
+        categories:
+          discourse_custom_webhooks: "Custom webhooks"
+  js:
+    custom_webhooks:
+      admin:
+        title: "Custom webhooks"
+        overview:
+          nav_label: "Overview"
+          nav_description: "What the moderation webhook does and how to configure it."
+          title: "Moderation webhook (CSAM / ToSHUB)"
+          description: "Sends a signed HTTPS moderation event to your content-moderation pipeline whenever the selected forum events happen, and applies the signed verdict that comes back. Configure the destination, secrets, and optional mutual TLS on the Settings tab."
+          point_events: "Fires on the events you choose (new topics, replies, edits)."
+          point_signing: "Signs every event body with HMAC-SHA256 so the pipeline can verify authenticity."
+          point_mtls: "Optionally authenticates with a client certificate (mutual TLS)."
+          configure: "Configure settings"
+      moderation:
+        nudge:
+          default_message: "This post may not follow the community guidelines. You can edit it or post anyway."
+          post_anyway: "Post anyway"
+          edit: "Edit"
+      reviewable:
+        actions:
+          agree_and_keep_hidden:
+            title: "Keep hidden"
+          delete_and_agree:
+            title: "Delete"
+          disagree_and_publish:
+            title: "Publish"
+          ignore:
+            title: "Ignore"
+        details:
+          title: "Moderation result"
+          category: "Category"
+          subtype: "Subtype"
+          severity: "Severity"
+          confidence: "Confidence"
+          flagged_terms: "Flagged terms"
+          reasons: "Reasons"
+          reasoning: "Reasoning"
+          moderation_id: "Moderation ID"
