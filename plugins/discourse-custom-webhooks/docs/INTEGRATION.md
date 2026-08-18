@@ -25,11 +25,11 @@ There are **three** moderation flows. Text is fast and gated inline; images are
 slow and gated async. A newer async **text re-check** closes the "Post anyway"
 gap so a published violation still reaches a moderator.
 
-| # | Flow | When | Blocking? | Post visible while checked? |
+| # | Flow | When | Blocking? | Visibility after a violation |
 |---|---|---|---|---|
-| A | **Text nudge** (pre-publish) | As the author hits Reply | Yes (sync, in the composer) | Not created yet |
-| B | **Text re-check** (post-publish) | After the post is created/edited | No (async) | **Yes — stays visible** |
-| C | **Image hold-pending** | After a post with images is created | No (async) | **No — held hidden** until clean |
+| A | **Text nudge** (pre-publish) | As the author hits Reply | Yes (sync, in the composer) | Post not created (Edit) or created then re-checked (Post anyway → B) |
+| B | **Text re-check** (post-publish) | After the post is created/edited | No (async) | **Hidden from public** + queued for review |
+| C | **Image hold-pending** | After a post with images is created | No (async) | **Held hidden** until a clean verdict |
 
 ### Flow A — Text nudge (synchronous, pre-publish)
 
@@ -56,16 +56,17 @@ Fails **open**: any check error (or blank `text_check_url`) returns
 
 Every eligible `post_created` / `post_edited` also fires an async event. forums
 re-scores the text with the **same engine** as Flow A. If it is a violation, the
-plugin raises a `/review` item **but keeps the post publicly visible** — the
-author already published past the nudge, so (matching Khoros flagged-content
-behaviour) a moderator decides whether to hide it.
+plugin **hides the post from the public** and raises a `/review` item. The
+author and staff still see the hidden post (greyed, with an "edit to make
+visible" notice); a moderator then restores or removes it — standard Discourse
+flag behaviour.
 
 ```
 Discourse (post already created & visible)
   → Jobs::CustomWebhooksEmitEvent → signed event → forums (SQS in prod / dev-intake locally)
     → DiscourseModerationOrchestrator → DiscourseTextModerationAdapter → Azure OpenAI
   ← POST /custom-webhooks/moderation/callback  { results.text.violation_found: true, ... }
-Discourse: violation → raise ReviewableCustomWebhooksModeration, post STAYS VISIBLE
+Discourse: violation → hide post + raise ReviewableCustomWebhooksModeration
            clean     → no-op (nothing to do)
 ```
 
@@ -209,22 +210,24 @@ The plugin normalises the forums response to exactly what the composer needs:
 |---|---|---|---|---|---|---|
 | 1 | Clean text | A | `can_publish:true` | Post is created normally | Yes | No |
 | 2 | Abusive text, author picks **Edit** | A | `can_publish:false` | Save cancelled; composer stays open | Not created | No |
-| 3 | Abusive text, author picks **Post anyway** | A→B | `can_publish:false`, then async `text.violation_found:true` | Post is created & published; async re-check raises a review item **without hiding it** | **Yes** | **Yes** |
+| 3 | Abusive text, author picks **Post anyway** | A→B | `can_publish:false`, then async `text.violation_found:true` | Post is created & published, then the async re-check **hides it** and raises a review item | Hidden from public (author/staff see it greyed) | **Yes** |
 | 4 | Text engine unreachable | A | `200 {can_publish:true}` (fail-open) | Post allowed | Yes | No |
 | 5 | Clean reply/edit (no image) | B | `text.violation_found:false` | No-op | Yes | No |
-| 6 | Abusive reply/edit (no nudge shown) | B | `text.violation_found:true` | Review item raised; post stays visible | **Yes** | **Yes** |
+| 6 | Abusive reply/edit (no nudge shown) | B | `text.violation_found:true` | Post **hidden** + review item raised | Hidden from public (author/staff see it greyed) | **Yes** |
 | 7 | Clean image post | C | `image.verdict:"CLEAN"` | Held post is published (unhidden) | Held → Yes | No |
 | 8 | CSAM image in a public post | C | `image.verdict:"CSAM"` | Post destroyed + audited; T&S case filed | No (removed) | No (Khoros parity) |
 | 9 | CSAM image in a PM | C | `image.verdict:"CSAM"` | Kept hidden + review (staff-scoped) | No | **Yes** |
-| 10 | Image + abusive text together | B+C | `image` + `text` in one verdict | Image action applies; text raises review; if image held & clean, published unless text keeps it queued | Depends on image action | If text violation |
+| 10 | Image + abusive text together | B+C | `image` + `text` in one verdict | CSAM → destroy; otherwise a text violation hides the post; image-clean alone publishes | Hidden if any violation | If text violation |
 | 11 | Duplicate event replayed | B/C | intake `409` / callback `noop` | Idempotent — nothing re-applied | unchanged | No |
 | 12 | Bad signature (any hop) | any | `401` | Rejected, not retried | unchanged | No |
 | 13 | Nudge response recorded | A | `202 {status:"recorded"}` | Row written to `nudging_metrics` | n/a | No |
 
 > **Key behavioural note (scenarios 3 & 6):** a "Post anyway" / already-published
-> text violation is **left visible** and queued for a moderator — it is **not**
-> auto-hidden. Only the image hold-pending flow (C) hides content before a
-> verdict. A moderator hides/deletes from `/review` if warranted.
+> text violation is **hidden from the public** and queued for a moderator. It is
+> not silently removed — the author and staff still see the hidden post (greyed,
+> with an "edit to make visible" notice), and a moderator restores or removes it
+> from `/review`. Contrast with a CSAM public image (scenario 8), which is
+> destroyed outright.
 
 ---
 
@@ -293,15 +296,15 @@ This is the direct analogue of the Khoros abuse queue. Text nudges alone
 **Discourse** (from this repo, with the dev server + Sidekiq running):
 
 ```bash
-# Flow B end to end: create a profane post, then confirm it stays visible AND is queued
+# Flow B end to end: create a profane post, then confirm it is hidden AND queued
 bin/rails runner '
   u = User.find_by(username: "<author>")
   p = PostCreator.create!(u, topic_id: <topic_id>, raw: "you are all idiots and morons")
-  puts "post_id=#{p.id} hidden=#{p.hidden}"'         # hidden=false expected
-# after a few seconds:
+  puts "post_id=#{p.id} hidden=#{p.hidden}"'         # hidden=false at creation
+# after a few seconds (async re-check + callback):
 bin/rails runner 'p = Post.find(<post_id>);
   puts "hidden=#{p.hidden} reviewables=#{Reviewable.where(target_id: p.id).count}"'
-# expect: hidden=false  reviewables=1   → visible + queued for /review
+# expect: hidden=true  reviewables=1   → hidden from public + queued for /review
 
 # plugin specs
 LOAD_PLUGINS=1 bin/rspec plugins/discourse-custom-webhooks/spec/custom_webhooks_spec.rb

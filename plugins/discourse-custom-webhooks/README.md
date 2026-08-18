@@ -101,8 +101,9 @@ This plugin handles the **full moderation loop**:
 - **Inbound** — signed verdict callback that this plugin applies:
   `POST /custom-webhooks/moderation/callback` (verified with
   `custom_webhooks_callback_secret` via the `X-Forums-Signature` header).
-  Clean → publish; text violation → **keep the post visible** + `/review` item
-  (Khoros "Post anyway" parity — a moderator decides whether to hide it);
+  Clean → publish; text violation → **hide from public** + `/review` item (the
+  author and staff still see the hidden post greyed, with an "edit to make
+  visible" notice; a moderator restores or removes it);
   CSAM public → destroy; CSAM in a PM → keep hidden + review. Idempotent on
   `event_id`.
 - **Pre-publish nudge** — `POST /custom-webhooks/moderation/check` runs a

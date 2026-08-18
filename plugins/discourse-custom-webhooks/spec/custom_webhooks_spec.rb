@@ -260,7 +260,7 @@ describe "Custom webhooks" do
       expect(target_post.reload.hidden).to eq(false)
     end
 
-    it "raises a reviewable but keeps a text violation visible (Post anyway parity)" do
+    it "hides a text violation and raises a reviewable" do
       expect(target_post.reload.hidden).to eq(false)
 
       expect {
@@ -285,9 +285,9 @@ describe "Custom webhooks" do
       }.to change { ReviewableCustomWebhooksModeration.count }.by(1)
 
       expect(response.parsed_body["action"]).to eq("review")
-      # The author already published past the composer nudge — the post stays
-      # visible and is queued for a moderator, matching Khoros.
-      expect(target_post.reload.hidden).to eq(false)
+      # The async re-check confirmed a violation, so the published post is hidden
+      # from the public and queued for a moderator.
+      expect(target_post.reload.hidden).to eq(true)
 
       payload = ReviewableCustomWebhooksModeration.last.payload
       expect(payload["category"]).to eq("PROFANITY")
@@ -296,7 +296,7 @@ describe "Custom webhooks" do
       expect(payload["reasoning"]).to eq("Explicit profanity.")
     end
 
-    it "leaves a hold-pending (already hidden) post hidden on a text violation" do
+    it "keeps an already-hidden (hold-pending) post hidden on a text violation" do
       target_post.hide!(PostActionType.types[:inappropriate])
 
       post_verdict(
