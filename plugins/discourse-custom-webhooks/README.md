@@ -7,6 +7,10 @@ selected forum events happen, and — unlike core webhooks — supports **mutual
 TLS** (client-certificate authentication). Every transport input is configured
 from the admin UI.
 
+> **End-to-end integration guide (Discourse + forums together):**
+> [`docs/INTEGRATION.md`](docs/INTEGRATION.md) — the three flows, endpoint map,
+> payloads, and a scenario-by-scenario "what to expect / what is done" table.
+
 ## Admin UI
 
 `Admin → Plugins → Custom webhooks`
@@ -97,7 +101,8 @@ This plugin handles the **full moderation loop**:
 - **Inbound** — signed verdict callback that this plugin applies:
   `POST /custom-webhooks/moderation/callback` (verified with
   `custom_webhooks_callback_secret` via the `X-Forums-Signature` header).
-  Clean → publish; text violation → keep hidden + `/review` item;
+  Clean → publish; text violation → **keep the post visible** + `/review` item
+  (Khoros "Post anyway" parity — a moderator decides whether to hide it);
   CSAM public → destroy; CSAM in a PM → keep hidden + review. Idempotent on
   `event_id`.
 - **Pre-publish nudge** — `POST /custom-webhooks/moderation/check` runs a
