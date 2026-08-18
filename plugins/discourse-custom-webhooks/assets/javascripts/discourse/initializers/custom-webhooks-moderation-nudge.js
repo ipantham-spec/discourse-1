@@ -43,6 +43,7 @@ export default {
           type: "POST",
           data: { title: composer.title, raw: composer.reply },
         })
+          .catch(() => null) // fail open: never block composing on a check error
           .then((result) => {
             if (!result || result.can_publish !== false) {
               return Promise.resolve();
@@ -52,6 +53,8 @@ export default {
               result.nudge_message ||
               i18n("custom_webhooks.moderation.nudge.default_message");
 
+            // Intentionally not caught below: rejecting here must cancel the
+            // save when the author chooses "Edit" instead of "Post anyway".
             return new Promise((resolve, reject) => {
               dialog.confirm({
                 message,
@@ -73,8 +76,7 @@ export default {
                 },
               });
             });
-          })
-          .catch(() => Promise.resolve());
+          });
       });
     });
   },
