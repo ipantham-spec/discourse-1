@@ -169,6 +169,20 @@ describe "Custom webhooks" do
         )
       end
     end
+
+    it "enqueues only once for a new topic's first post when both post_created and topic_created are subscribed" do
+      # :post_created and :topic_created both fire for a brand new topic's first
+      # post — without the is_first_post? guard this would double-enqueue with
+      # two different event_ids, which forums' event_id dedup would not catch.
+      SiteSetting.custom_webhooks_events = "post_created|topic_created"
+      SiteSetting.custom_webhooks_include_images = true
+      DiscourseCustomWebhooks::Emitter.stubs(:post_has_image?).returns(true)
+
+      Jobs::CustomWebhooksEmitEvent.jobs.clear
+      PostCreator.create!(user, title: "Dup guard topic", raw: "image here")
+
+      expect(Jobs::CustomWebhooksEmitEvent.jobs.size).to eq(1)
+    end
   end
 
   describe Jobs::CustomWebhooksEmitEvent do

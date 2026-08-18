@@ -51,6 +51,7 @@ after_initialize do
   emit_for_post =
     lambda do |post, event|
       return unless DiscourseCustomWebhooks::Emitter.enabled?
+      return unless DiscourseCustomWebhooks::Emitter.eligible?(post)
       return unless DiscourseCustomWebhooks::Emitter.subscribed?(event)
       return unless SiteSetting.custom_webhooks_include_images
       return unless DiscourseCustomWebhooks::Emitter.post_has_image?(post)
@@ -62,7 +63,14 @@ after_initialize do
       Jobs.enqueue(:custom_webhooks_emit_event, post_id: post.id, event: event)
     end
 
-  on(:post_created) { |post, _opts, _user| emit_for_post.call(post, "post_created") }
+  on(:post_created) do |post, _opts, _user|
+    # A new topic's first post also fires :post_created. When "topic_created" is
+    # subscribed too, the :topic_created hook below already emits it — skip here
+    # so the same post isn't sent twice (with two different event_ids, which
+    # would defeat the forums-side event_id dedup).
+    next if post.is_first_post? && DiscourseCustomWebhooks::Emitter.subscribed?("topic_created")
+    emit_for_post.call(post, "post_created")
+  end
   on(:post_edited) { |post, _topic_changed, _opts| emit_for_post.call(post, "post_edited") }
   on(:topic_created) do |topic, _opts, _user|
     next unless DiscourseCustomWebhooks::Emitter.subscribed?("topic_created")
