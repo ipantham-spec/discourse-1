@@ -1,11 +1,12 @@
 # frozen_string_literal: true
 
 # Receives moderation verdicts from the moderation pipeline and applies the
-# result to the post: clean -> publish (unhide); text violation -> keep hidden +
-# raise a review-queue item; CSAM in a public post -> destroy; CSAM in a PM ->
-# keep hidden + review. Also serves the synchronous pre-publish text check and
-# the nudge-metrics recorder used by the composer nudge. Every action is
-# written to the staff action log.
+# result to the post: clean -> publish (unhide); text violation -> keep the post
+# visible and raise a review-queue item (Khoros "post anyway" parity — a
+# moderator decides whether to hide it); CSAM in a public post -> destroy; CSAM
+# in a PM -> keep hidden + review. Also serves the synchronous pre-publish text
+# check and the nudge-metrics recorder used by the composer nudge. Every action
+# is written to the staff action log.
 class CustomWebhooksModerationController < ::ApplicationController
   requires_plugin "discourse-custom-webhooks"
 
@@ -168,7 +169,13 @@ class CustomWebhooksModerationController < ::ApplicationController
       destroy_post(post, reason: "custom_webhooks_moderation_csam")
       "destroyed"
     elsif text_violation
-      keep_hidden(post, reason: "custom_webhooks_moderation_text_violation")
+      # "Post anyway" text: the author already published past the composer nudge,
+      # so the post is publicly visible. Match Khoros — the content STAYS visible
+      # and is queued for a moderator (like player-reported/flagged content), who
+      # decides whether to hide it. We only raise the review item here; we do not
+      # newly hide a visible post. (A post that arrived hidden — e.g. a
+      # hold-pending image — keeps whatever state it came in with.)
+      flag_for_review(post, reason: "custom_webhooks_moderation_text_violation")
       raise_reviewable(
         post,
         category: text["category"],
@@ -225,6 +232,13 @@ class CustomWebhooksModerationController < ::ApplicationController
 
   def keep_hidden(post, reason:)
     post.hide!(PostActionType.types[:inappropriate]) unless post.hidden?
+    log_action(post, reason)
+  end
+
+  # Raises a review item without changing the post's visibility. Used for
+  # "Post anyway" text violations, which stay publicly visible (Khoros parity)
+  # until a moderator acts on the queued item.
+  def flag_for_review(post, reason:)
     log_action(post, reason)
   end
 

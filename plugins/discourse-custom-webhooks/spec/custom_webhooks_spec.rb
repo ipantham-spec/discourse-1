@@ -260,7 +260,9 @@ describe "Custom webhooks" do
       expect(target_post.reload.hidden).to eq(false)
     end
 
-    it "raises a reviewable and keeps a text violation hidden" do
+    it "raises a reviewable but keeps a text violation visible (Post anyway parity)" do
+      expect(target_post.reload.hidden).to eq(false)
+
       expect {
         post_verdict(
           {
@@ -283,13 +285,36 @@ describe "Custom webhooks" do
       }.to change { ReviewableCustomWebhooksModeration.count }.by(1)
 
       expect(response.parsed_body["action"]).to eq("review")
-      expect(target_post.reload.hidden).to eq(true)
+      # The author already published past the composer nudge — the post stays
+      # visible and is queued for a moderator, matching Khoros.
+      expect(target_post.reload.hidden).to eq(false)
 
       payload = ReviewableCustomWebhooksModeration.last.payload
       expect(payload["category"]).to eq("PROFANITY")
       expect(payload["severity"]).to eq("high")
       expect(payload["flagged_terms"]).to eq(%w[badword1 badword2])
       expect(payload["reasoning"]).to eq("Explicit profanity.")
+    end
+
+    it "leaves a hold-pending (already hidden) post hidden on a text violation" do
+      target_post.hide!(PostActionType.types[:inappropriate])
+
+      post_verdict(
+        {
+          event_id: "evt-text-held",
+          post_id: target_post.id,
+          moderation_id: "mod-2",
+          results: {
+            text: {
+              violation_found: true,
+              category: "PROFANITY",
+            },
+          },
+        },
+      )
+
+      expect(response.parsed_body["action"]).to eq("review")
+      expect(target_post.reload.hidden).to eq(true)
     end
 
     it "destroys a CSAM public post" do
