@@ -90,6 +90,24 @@ Discourse: CLEAN → publish (unhide)
 > present and returns `results.text` and/or `results.image`. The plugin applies
 > both in a single verdict.
 
+### How images reach the scanner (S3, like Khoros)
+
+The moderation service (CTD) fetches each image by URL, so the URL the plugin
+puts in `images[].url` must be reachable by the scanner. The plugin derives it
+from Discourse's configured **upload store** (`PayloadBuilder#url_for`):
+
+| Deployment | Upload store | `images[].url` the plugin sends | Who fetches it |
+|---|---|---|---|
+| **Local dev** | `FileStore::LocalStore` | absolute `http://localhost:3000/uploads/...` | local forums on `:8080` (same host) |
+| **Production** | `FileStore::S3Store` (`enable_s3_uploads`) | **presigned S3 URL** (`store.url_for(upload)`) | CTD / forums, via the time-limited link |
+
+This is the **same model as Khoros**: images live in S3 and the scanner is
+handed a presigned S3 link it can fetch directly. No plugin change is needed to
+switch — enabling Discourse's S3 upload store (`enable_s3_uploads`, bucket, and
+credentials) makes `Discourse.store` an `S3Store`, and the plugin automatically
+emits presigned URLs instead of localhost paths. For `secure_uploads`, the
+presigned URL still grants the scanner time-boxed read access.
+
 ---
 
 ## 2. Endpoints (who calls whom)
