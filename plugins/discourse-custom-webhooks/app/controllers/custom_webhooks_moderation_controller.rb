@@ -3,8 +3,9 @@
 # Receives moderation verdicts from the moderation pipeline and applies the
 # result to the post: clean -> publish (unhide); text violation -> keep hidden +
 # raise a review-queue item; CSAM in a public post -> destroy; CSAM in a PM ->
-# keep hidden + review. Also serves the synchronous pre-publish text check used
-# by the composer nudge. Every action is written to the staff action log.
+# keep hidden + review. Also serves the synchronous pre-publish text check and
+# the nudge-metrics recorder used by the composer nudge. Every action is
+# written to the staff action log.
 class CustomWebhooksModerationController < ::ApplicationController
   requires_plugin "discourse-custom-webhooks"
 
@@ -13,10 +14,11 @@ class CustomWebhooksModerationController < ::ApplicationController
   skip_before_action :check_xhr, only: [:callback]
   before_action :ensure_enabled
   before_action :verify_signature, only: [:callback]
-  before_action :ensure_logged_in, only: [:check]
+  before_action :ensure_logged_in, only: %i[check nudge_metric]
 
   SIGNATURE_HEADER = "HTTP_X_FORUMS_SIGNATURE"
   PROCESSED_TTL = 7.days
+  NUDGE_ACTIONS = %w[edit post_anyway].freeze
 
   # Synchronous pre-publish text check used by the composer nudge. Returns the
   # pipeline's text verdict so the composer can warn before the post goes live.
@@ -27,8 +29,9 @@ class CustomWebhooksModerationController < ::ApplicationController
     url = SiteSetting.custom_webhooks_text_check_url
     return render json: { can_publish: true } if url.blank?
 
+    event_id = SecureRandom.uuid
     body = {
-      event_id: SecureRandom.uuid,
+      event_id: event_id,
       actor: {
         sso_id: sso_id_for(current_user&.id),
         locale: current_user&.effective_locale,
@@ -58,10 +61,50 @@ class CustomWebhooksModerationController < ::ApplicationController
       rescue StandardError
         {}
       end
-    render json: normalize_verdict(verdict)
+    render json: normalize_verdict(verdict, event_id: event_id)
   rescue StandardError => e
     Rails.logger.warn("Custom webhooks moderation: text check failed: #{e.class} #{e.message}")
     render json: { can_publish: true }
+  end
+
+  # Records the author's response to the pre-publish text nudge (Edit or Post
+  # anyway) — Khoros parity for `action=NUDGE_ACTION -> nudging-metrics/store`.
+  # Analytics only: never blocks or alters composing, and failures are silent.
+  def nudge_metric
+    chosen_action = params[:nudge_action].to_s
+    return render json: { status: "ignored" } if NUDGE_ACTIONS.exclude?(chosen_action)
+
+    url = SiteSetting.custom_webhooks_nudge_metrics_url
+    return render json: { status: "skipped" } if url.blank?
+
+    body = {
+      event_id: params[:event_id].to_s.presence || SecureRandom.uuid,
+      source: "DISCOURSE",
+      action: chosen_action,
+      category: params[:category].presence,
+      actor: {
+        sso_id: sso_id_for(current_user&.id),
+        locale: current_user&.effective_locale,
+        trust_level: current_user&.trust_level,
+      },
+      recorded_at: Time.zone.now.iso8601,
+    }.to_json
+
+    signature = DiscourseCustomWebhooks::Signature.sign(body, SiteSetting.custom_webhooks_secret)
+    header = SiteSetting.custom_webhooks_signature_header.presence || "X-Discourse-Signature"
+
+    DiscourseCustomWebhooks::Emitter
+      .connection
+      .post(url) do |req|
+        req.headers["Content-Type"] = "application/json"
+        req.headers[header] = signature
+        req.body = body
+      end
+
+    render json: { status: "recorded" }
+  rescue StandardError => e
+    Rails.logger.warn("Custom webhooks moderation: nudge metric failed: #{e.class} #{e.message}")
+    render json: { status: "error" }
   end
 
   def callback
@@ -224,7 +267,7 @@ class CustomWebhooksModerationController < ::ApplicationController
 
   # Flattens the pipeline text response (which may be nested under "results.text"
   # or "response") into the small shape the composer nudge consumes.
-  def normalize_verdict(verdict)
+  def normalize_verdict(verdict, event_id:)
     node = verdict["results"]&.dig("text") || verdict["response"] || verdict
     can_publish = node["can_publish"]
     can_publish = !(node["violation_found"] == true) if can_publish.nil?
@@ -233,6 +276,7 @@ class CustomWebhooksModerationController < ::ApplicationController
       nudge_message: node["nudge_message"] || node["nudgeMessage"],
       suggested_rewrite: node["suggested_rewrite"] || node["suggestedRewrite"],
       category: node["category"],
+      event_id: event_id,
     }
   end
 

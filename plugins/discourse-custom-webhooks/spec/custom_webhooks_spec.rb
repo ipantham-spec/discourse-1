@@ -413,6 +413,83 @@ describe "Custom webhooks" do
       post "/custom-webhooks/moderation/check.json", params: { title: "t", raw: "hello" }
       expect(response.parsed_body["can_publish"]).to eq(true)
     end
+
+    it "echoes an event_id so the nudge-metric call can correlate to this check" do
+      stub_request(:post, SiteSetting.custom_webhooks_text_check_url).to_return(
+        status: 200,
+        body: { results: { text: { can_publish: true } } }.to_json,
+      )
+      post "/custom-webhooks/moderation/check.json", params: { title: "t", raw: "hello" }
+      expect(response.parsed_body["event_id"]).to be_present
+    end
+  end
+
+  describe "nudge metric endpoint", type: :request do
+    fab!(:signed_in_user) { Fabricate(:user, refresh_auto_groups: true) }
+
+    before do
+      SiteSetting.custom_webhooks_nudge_metrics_url = "https://mod.example.com/nudging-metrics"
+      sign_in(signed_in_user)
+    end
+
+    it "forwards the author's choice to the configured endpoint" do
+      stub =
+        stub_request(:post, SiteSetting.custom_webhooks_nudge_metrics_url).to_return(status: 200)
+
+      post "/custom-webhooks/moderation/nudge-metric.json",
+           params: {
+             event_id: "abc-123",
+             category: "PROFANITY",
+             nudge_action: "post_anyway",
+           }
+
+      expect(response.status).to eq(200)
+      expect(response.parsed_body["status"]).to eq("recorded")
+      expect(stub).to have_been_requested
+    end
+
+    it "rejects an action outside the known Edit/Post-anyway set" do
+      post "/custom-webhooks/moderation/nudge-metric.json",
+           params: {
+             event_id: "abc-123",
+             nudge_action: "something_else",
+           }
+
+      expect(response.parsed_body["status"]).to eq("ignored")
+    end
+
+    it "skips recording when no metrics URL is configured" do
+      SiteSetting.custom_webhooks_nudge_metrics_url = ""
+      post "/custom-webhooks/moderation/nudge-metric.json",
+           params: {
+             event_id: "abc-123",
+             nudge_action: "edit",
+           }
+      expect(response.parsed_body["status"]).to eq("skipped")
+    end
+
+    it "fails open when the endpoint errors" do
+      stub_request(:post, SiteSetting.custom_webhooks_nudge_metrics_url).to_return(status: 500)
+      post "/custom-webhooks/moderation/nudge-metric.json",
+           params: {
+             event_id: "abc-123",
+             nudge_action: "edit",
+           }
+      expect(response.status).to eq(200)
+      expect(response.parsed_body["status"]).to eq("recorded")
+    end
+  end
+
+  describe "nudge metric endpoint (anonymous)", type: :request do
+    it "returns 403 for a logged-out request" do
+      SiteSetting.custom_webhooks_nudge_metrics_url = "https://mod.example.com/nudging-metrics"
+      post "/custom-webhooks/moderation/nudge-metric.json",
+           params: {
+             event_id: "abc-123",
+             nudge_action: "edit",
+           }
+      expect(response.status).to eq(403)
+    end
   end
 end
 # rubocop:enable RSpec/DescribeClass

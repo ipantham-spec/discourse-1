@@ -58,6 +58,9 @@ discourse_custom_webhooks:
     default: ""
     secret: true
     area: "custom_webhooks"
+  custom_webhooks_nudge_metrics_url:
+    default: ""
+    area: "custom_webhooks"
 
   # --- Signing (HMAC-SHA256 over the raw request body) ---
   custom_webhooks_secret:

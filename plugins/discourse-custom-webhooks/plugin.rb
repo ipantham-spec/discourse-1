@@ -29,10 +29,12 @@ require_relative "lib/custom_webhooks/emitter"
 add_admin_route("custom_webhooks.admin.title", "custom-webhooks", { use_new_show_route: true })
 
 # Inbound moderation loop: the pipeline posts a signed verdict to the callback,
-# and the composer nudge posts to the synchronous text check.
+# and the composer nudge posts to the synchronous text check and (once the
+# author picks Edit or Post-anyway) the nudge-metrics recorder.
 Discourse::Application.routes.append do
   post "/custom-webhooks/moderation/callback" => "custom_webhooks_moderation#callback"
   post "/custom-webhooks/moderation/check" => "custom_webhooks_moderation#check"
+  post "/custom-webhooks/moderation/nudge-metric" => "custom_webhooks_moderation#nudge_metric"
 end
 
 after_initialize do

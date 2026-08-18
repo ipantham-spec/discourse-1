@@ -12,6 +12,7 @@ en:
     custom_webhooks_check_text: "Run the pre-publish text nudge: warn the author before a flagged post goes live. Fails open — never hard-blocks composing."
     custom_webhooks_hold_images_pending: "Hold posts that contain images as pending (hidden from everyone but the author) until a clean verdict arrives. Only applies when {{setting:custom_webhooks_include_images}} is enabled."
     custom_webhooks_callback_secret: "Shared secret used to verify the inbound verdict callback (HMAC-SHA256 over the raw body, in the X-Forums-Signature header). Requests that fail verification are rejected with 401."
+    custom_webhooks_nudge_metrics_url: "Endpoint that records the author's response to the pre-publish text nudge (Edit or Post anyway), matching the nudging-metrics analytics Khoros records. Leave blank to skip recording — never blocks composing."
     custom_webhooks_secret: "Shared secret used to sign the request body with HMAC-SHA256. When set, the signature is sent in the header named by {{setting:custom_webhooks_signature_header}}. Leave blank to send unsigned requests."
     custom_webhooks_signature_header: "Name of the header carrying the request signature (format: sha256=<hex>)."
     custom_webhooks_extra_headers: "Optional static headers to add to every request, one per line as <strong>Header-Name: value</strong>."

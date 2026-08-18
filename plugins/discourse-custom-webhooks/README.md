@@ -29,6 +29,11 @@ from the admin UI.
 | `custom_webhooks_secret` | HMAC-SHA256 signing secret. |
 | `custom_webhooks_signature_header` | Header carrying `sha256=<hex>` (default `X-Discourse-Signature`). |
 | `custom_webhooks_extra_headers` | Static headers (`Header-Name: value` per line). |
+| `custom_webhooks_check_text` | Run the pre-publish text nudge (Edit / Post-anyway). Fails open. |
+| `custom_webhooks_text_check_url` | Endpoint for the synchronous pre-publish text check. Leave blank to disable the nudge. |
+| `custom_webhooks_hold_images_pending` | Hold image posts as pending until a clean verdict arrives. |
+| `custom_webhooks_callback_secret` | Shared secret to verify the inbound verdict callback. |
+| `custom_webhooks_nudge_metrics_url` | Endpoint that records the author's Edit / Post-anyway choice (Khoros `nudging-metrics` parity). Leave blank to skip. |
 | `custom_webhooks_client_certificate` | mTLS client certificate (PEM). |
 | `custom_webhooks_client_key` | mTLS private key (PEM). |
 | `custom_webhooks_client_key_passphrase` | Passphrase for the private key. |
@@ -97,7 +102,11 @@ This plugin handles the **full moderation loop**:
   `event_id`.
 - **Pre-publish nudge** — `POST /custom-webhooks/moderation/check` runs a
   synchronous text check from the composer; flagged text shows an
-  Edit / Post-anyway dialog. Fails open.
+  Edit / Post-anyway dialog. Fails open. Whichever the author picks, the
+  composer fires `POST /custom-webhooks/moderation/nudge-metric`
+  (fire-and-forget) so admins get the same Edit-vs-Post-anyway analytics
+  Khoros records (`action=NUDGE_ACTION` → `nudging-metrics/store`). Configured
+  via `custom_webhooks_nudge_metrics_url`; blank skips recording entirely.
 - **Moderator dashboard** — violations appear in the native `/review` queue as a
   `ReviewableCustomWebhooksModeration` item with a details panel (category,
   subtype, severity, confidence, flagged terms, reasoning) and

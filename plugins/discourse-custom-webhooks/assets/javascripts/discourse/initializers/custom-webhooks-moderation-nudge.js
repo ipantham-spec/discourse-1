@@ -2,6 +2,17 @@ import { ajax } from "discourse/lib/ajax";
 import { withPluginApi } from "discourse/lib/plugin-api";
 import { i18n } from "discourse-i18n";
 
+// Fire-and-forget: records which choice the author made (Edit or Post anyway)
+// so admins get the same nudge-effectiveness analytics Khoros records via
+// `action=NUDGE_ACTION -> nudging-metrics/store`. Never awaited by the caller
+// and any failure is swallowed — this must not affect composing.
+function recordNudgeMetric(eventId, category, nudgeAction) {
+  ajax("/custom-webhooks/moderation/nudge-metric", {
+    type: "POST",
+    data: { event_id: eventId, category, nudge_action: nudgeAction },
+  }).catch(() => {});
+}
+
 // Pre-publish text nudge. Before a post is saved, run a synchronous moderation
 // check. If the text is flagged, warn the author and let them Edit or Post
 // anyway (soft nudge). Any error fails open so composing is never hard-blocked.
@@ -49,9 +60,17 @@ export default {
                 cancelButtonLabel: "custom_webhooks.moderation.nudge.edit",
                 didConfirm: () => {
                   composer._customWebhooksModerationOverride = true;
+                  recordNudgeMetric(
+                    result.event_id,
+                    result.category,
+                    "post_anyway"
+                  );
                   resolve();
                 },
-                didCancel: () => reject(),
+                didCancel: () => {
+                  recordNudgeMetric(result.event_id, result.category, "edit");
+                  reject();
+                },
               });
             });
           })
